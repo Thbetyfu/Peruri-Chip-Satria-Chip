@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+build/
+hardware-satria/quartus/db/
+hardware-satria/quartus/incremental_db/
+*.qws
