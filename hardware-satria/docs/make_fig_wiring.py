@@ -1,154 +1,202 @@
-"""Diagram wiring demo DE10-Nano (laptop + USB-UART + USB-Blaster)."""
+"""Diagram wiring demo SATRIA-CHIP di Terasic DE10-Nano (gaya skema teknik).
+
+Sumber pin: quartus/screener.qsf dan rtl/de10_nano_top.v.
+Output: docs/fig/wiring_de10nano.png  (2400 x 1410 px)
+"""
+import os
+
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-from matplotlib.patches import FancyBboxPatch, Rectangle, Circle
-from matplotlib import font_manager as fm
-import os
+from matplotlib.patches import Circle, FancyBboxPatch, Rectangle
 
-for f in fm.findSystemFonts():
-    if "Inter" in os.path.basename(f):
-        fm.fontManager.addfont(f)
-plt.rcParams["font.family"] = "Inter"
+INK, MUTED, LINE, NAVY = "#111827", "#6B7280", "#D1D5DB", "#1B365D"
+C_TX, C_RX, C_GND, C_USB, C_PWR = "#D97706", "#059669", "#111827", "#2563EB", "#DC2626"
+BOARD, BOARD_EDGE = "#0F3D2E", "#0B2A20"
+MONO, SANS = "DejaVu Sans Mono", "DejaVu Sans"
 
-INK = "#1f2937"
-MUTED = "#6b7280"
-C_TX = "#d97706"   # adaptor TX -> FPGA RX
-C_RX = "#16a34a"   # FPGA TX -> adaptor RX
-C_GND = "#111827"
-C_USB = "#2563eb"
-C_PWR = "#dc2626"
-
-fig, ax = plt.subplots(figsize=(11, 6.4), dpi=200)
-ax.set_xlim(0, 110)
-ax.set_ylim(0, 64)
-ax.axis("off")
+W, H = 24.0, 14.1
+fig = plt.figure(figsize=(W / 2, H / 2), dpi=200)
+ax = fig.add_axes([0, 0, 1, 1])
+ax.set_xlim(0, W); ax.set_ylim(0, H); ax.axis("off")
 
 
-def box(x, y, w, h, fc, ec, lw=1.6, r=1.2, z=1):
-    p = FancyBboxPatch((x, y), w, h, boxstyle=f"round,pad=0,rounding_size={r}",
-                       fc=fc, ec=ec, lw=lw, zorder=z)
-    ax.add_patch(p)
-    return p
+def t(x, y, s, size=8, color=INK, weight="normal", ha="center", va="center", family=SANS, z=8):
+    ax.text(x, y, s, fontsize=size, color=color, weight=weight, ha=ha, va=va, family=family, zorder=z,
+            linespacing=1.35)
 
 
-def label(x, y, s, size=9, color=INK, weight="normal", ha="center", va="center", z=5):
-    ax.text(x, y, s, fontsize=size, color=color, weight=weight, ha=ha, va=va, zorder=z)
+def rbox(x, y, w, h, fc, ec, lw=1.4, r=0.18, z=2):
+    ax.add_patch(FancyBboxPatch((x, y), w, h, boxstyle=f"round,pad=0,rounding_size={r}", fc=fc, ec=ec, lw=lw,
+                                zorder=z))
 
 
-# ------------------------------------------------------------ laptop
-box(2, 30, 22, 22, "#f3f4f6", INK)
-label(13, 48.5, "Laptop / PC", 11, weight="bold")
-label(13, 45.2, "Quartus Programmer\nhost/demo_uart.py", 8, MUTED)
-for i, (yy, t) in enumerate([(38.5, "USB-A #1"), (33.5, "USB-A #2")]):
-    box(19, yy - 1.4, 5, 2.8, "#e5e7eb", INK, lw=1.0, r=0.4, z=2)
-    label(16.6, yy, t, 7.5, ha="right")
+def wire(pts, color, lw=2.3, z=5, dots=True):
+    xs, ys = zip(*pts)
+    ax.plot(xs, ys, color=color, lw=lw, solid_capstyle="round", solid_joinstyle="round", zorder=z)
+    if dots:
+        for (x, y) in (pts[0], pts[-1]):
+            ax.add_patch(Circle((x, y), 0.075, color=color, zorder=z + 1))
 
-# ------------------------------------------------------------ USB-UART adapter
-box(31.5, 29.5, 19.5, 13, "#fff7ed", "#c2410c")
-label(41.25, 40.3, "Adaptor USB-UART", 9.5, weight="bold")
-label(41.25, 38.0, "(CP2102 / CH340 / FT232)", 7, MUTED)
-label(39.5, 35.9, "jumper level = 3,3 V", 7.5, "#c2410c", weight="bold")
-pins_ad = {"TXD": 33.0, "RXD": 31.6, "GND": 30.2}
-# kaki pin adaptor di sisi kanan
-for name, yy in [("TXD", 34.0), ("RXD", 32.6), ("GND", 31.2)]:
-    ax.add_patch(Rectangle((51, yy - 0.45), 1.6, 0.9, fc="#9ca3af", ec=INK, lw=0.6, zorder=3))
-    label(50.2, yy, name, 7.5, ha="right")
-    pins_ad[name] = (52.6, yy)
-box(29.5, 34.9, 2.4, 1.6, "#e5e7eb", INK, lw=0.8, r=0.3, z=2)  # konektor USB adaptor
 
-# ------------------------------------------------------------ DE10-Nano board
-bx, by, bw, bh = 58, 6, 50, 52
-box(bx, by, bw, bh, "#0f5132", "#052e1c", lw=2, r=1.8)
-label(bx + bw / 2, by + bh - 2.6, "Terasic DE10-Nano", 12, "white", weight="bold")
-label(bx + bw / 2, by + bh - 5.2, "Cyclone V SoC 5CSEBA6U23I7", 8.5, "#bbf7d0")
+def port(x, y, w, h, label, size=6.5):
+    rbox(x, y, w, h, "#F3F4F6", "#6B7280", lw=1.0, r=0.06, z=6)
+    t(x + w / 2, y + h / 2, label, size, INK, z=9)
 
-# chip
-box(91, 24, 14, 13, "#111827", "#000000", lw=1.2, r=0.6, z=2)
-label(98, 33.0, "Cyclone V", 9, "white", weight="bold")
-label(98, 30.6, "SoC FPGA", 8, "#d1d5db")
-label(98, 27.2, "screener\n(FPGA fabric)", 7, "#93c5fd")
 
-# JP1 / GPIO_0 header 2x20 di sisi kiri board
-hx, hy = 61.5, 14.5
-pitch = 1.05
-ax.add_patch(Rectangle((hx - 0.9, hy - 0.9), 3.9, 20 * pitch + 0.8, fc="#1f2937", ec="#000", lw=0.8, zorder=2))
-pin_xy = {}
-for row in range(20):
-    for col in range(2):
-        n = row * 2 + col + 1          # pin 1 di atas-kiri
-        x = hx + col * 2.1
-        y = hy + (19 - row) * pitch
-        pin_xy[n] = (x, y)
-        hl = n in (1, 2, 12)
-        fc = {1: C_TX, 2: C_RX, 12: "#e5e7eb"}.get(n, "#d4af37")
-        ax.add_patch(Circle((x, y), 0.36 if not hl else 0.48, fc=fc, ec="#000", lw=0.5, zorder=4))
-label(hx + 1.05, hy + 20 * pitch + 3.2, "JP1\n(GPIO_0)", 7.5, "white", weight="bold")
-label(hx + 4.0, pin_xy[1][1], "pin 1  GPIO_0[0]  PIN_V12  → UART_RX", 6.8, "#fde68a", ha="left")
-label(hx + 4.0, pin_xy[2][1] - 1.7, "pin 2  GPIO_0[1]  PIN_E8   → UART_TX", 6.8, "#bbf7d0", ha="left")
-label(hx + 4.0, pin_xy[12][1], "pin 12 GND", 6.8, "#e5e7eb", ha="left")
+# ---------------------------------------------------------------- judul
+t(0.6, H - 0.55, "Gambar Wiring Demo On-Board — SATRIA-CHIP pada Terasic DE10-Nano", 12.5, NAVY, "bold", ha="left")
+t(0.6, H - 1.03, "Host PC → adaptor USB-UART 3,3 V → header JP1 (GPIO_0) FPGA Cyclone V 5CSEBA6U23I7  ·  "
+  "pemrograman bitstream lewat USB-Blaster II on-board", 8.2, MUTED, ha="left")
+ax.plot([0.6, W - 0.6], [H - 1.38, H - 1.38], color=LINE, lw=1)
 
-# USB-Blaster mini-USB & DC jack (tepi atas board)
-box(95, 50.6, 5, 2.6, "#d1d5db", INK, lw=1.0, r=0.4, z=3)
-label(97.5, 48.8, "USB-Blaster II\n(mini-USB)", 6.8, "white")
-box(101.5, 50.6, 4.5, 2.6, "#111827", "#9ca3af", lw=1.0, r=0.6, z=3)
-label(103.8, 48.8, "DC 5 V", 6.8, "white")
+# ---------------------------------------------------------------- host PC
+hx, hy, hw, hh = 0.6, 7.6, 4.3, 4.2
+rbox(hx, hy, hw, hh, "#F9FAFB", "#9CA3AF")
+t(hx + hw / 2, hy + hh - 0.45, "HOST PC / LAPTOP", 9, INK, "bold")
+t(hx + hw / 2, hy + hh - 1.1, "Quartus Programmer\nhost/demo_uart.py · dasbor demo", 6.8, MUTED)
+port(hx + hw - 1.4, hy + 1.75, 1.4, 0.5, "USB-A #1")
+port(hx + hw - 1.4, hy + 0.6, 1.4, 0.5, "USB-A #2")
+t(hx + 0.25, hy + 2.0, "JTAG", 6.6, C_USB, "bold", ha="left")
+t(hx + 0.25, hy + 0.85, "serial COMx", 6.6, C_USB, "bold", ha="left")
 
-# tombol & LED (tepi bawah)
-for i, (xx, t) in enumerate([(96.5, "KEY0\nreset"), (102.5, "KEY1\ntamper")]):
-    ax.add_patch(Rectangle((xx - 1.2, 9.2), 2.4, 2.4, fc="#9ca3af", ec="#000", lw=0.6, zorder=3))
-    ax.add_patch(Circle((xx, 10.4), 0.7, fc="#374151", ec="#000", lw=0.5, zorder=4))
-    label(xx, 6.9 + 0.2, t, 6.3, "white")
-led_cols = ["#facc15"] * 2 + ["#60a5fa", "#a78bfa", "#374151", "#374151", "#374151", "#f87171"]
+# ---------------------------------------------------------------- adaptor USB-UART
+ax0, ay0, aw, ah = 6.4, 5.4, 3.8, 3.3
+rbox(ax0, ay0, aw, ah, "#FFF7ED", "#C2410C")
+t(ax0 + aw / 2, ay0 + ah - 0.42, "ADAPTOR USB-UART", 8.6, "#9A3412", "bold")
+t(ax0 + aw / 2, ay0 + ah - 0.85, "CP2102 / CH340 / FT232", 6.6, MUTED)
+t(ax0 + aw / 2, ay0 + ah - 1.25, "jumper VCCIO = 3,3 V", 6.6, "#C2410C", "bold")
+port(ax0 - 0.05, ay0 + 0.95, 0.8, 0.45, "USB")
+apin = {"GND": ay0 + 1.75, "RXD": ay0 + 1.2, "TXD": ay0 + 0.65}
+for name, yy in apin.items():
+    port(ax0 + aw - 0.85, yy - 0.2, 0.85, 0.4, name)
+t(ax0 + 0.95, ay0 + 0.35, "pin VCC: tidak disambung", 5.9, C_PWR, ha="left")
+
+# ---------------------------------------------------------------- papan DE10-Nano
+bx, by, bw, bh = 11.6, 2.4, 11.8, 9.6
+rbox(bx, by, bw, bh, BOARD, BOARD_EDGE, lw=2, r=0.3)
+t(bx + 0.4, by + bh - 0.45, "TERASIC DE10-NANO", 10.5, "white", "bold", ha="left")
+t(bx + 0.4, by + bh - 0.92, "Cyclone V SoC 5CSEBA6U23I7  ·  clock FPGA_CLK1_50 (PIN_V11)", 6.8, "#A7F3D0", ha="left")
+port(bx + 7.1, by + bh - 0.8, 1.9, 0.6, "USB-Blaster II\n(mini-USB)", 6.2)
+port(bx + 9.4, by + bh - 0.8, 1.7, 0.6, "DC 5 V / 2 A", 6.2)
+
+# FPGA
+fx, fy, fw, fh = bx + 6.3, by + 4.6, 5.0, 3.2
+rbox(fx, fy, fw, fh, "#111827", "#4B5563", lw=1.4, r=0.12, z=3)
+t(fx + fw / 2, fy + fh - 0.48, "Cyclone V FPGA fabric", 8.4, "white", "bold")
+t(fx + fw / 2, fy + fh / 2 - 0.2, "de10_nano_top\n├─ uart_bridge  (115200 8N1)\n└─ screener_top (SATRIA-CHIP)",
+  6.6, "#93C5FD", family=MONO)
+
+# header JP1 2x20, mendatar: pin ganjil baris bawah, pin genap baris atas
+jx, jy, p = bx + 0.9, by + 3.35, 0.36
+ax.add_patch(Rectangle((jx - 0.24, jy - 0.24), 19 * p + 0.48, p + 0.48, fc="#1F2937", ec="#9CA3AF", lw=1, zorder=3))
+pin = {}
+USED = {1: C_TX, 2: C_RX, 12: "#E5E7EB"}
+WARN = {11, 29}
+for n in range(1, 41):
+    col, top = (n - 1) // 2, (n % 2 == 0)
+    x, y = jx + col * p, jy + (p if top else 0)
+    pin[n] = (x, y)
+    fc = USED.get(n) or ("#7F1D1D" if n in WARN else "#4B5563")
+    ec = "white" if n in USED else ("#FCA5A5" if n in WARN else "#6B7280")
+    ax.add_patch(Rectangle((x - 0.11, y - 0.11), 0.22, 0.22, fc=fc, ec=ec, lw=0.8, zorder=6))
+t(pin[1][0], pin[1][1] - 0.32, "1", 5.8, "#D1D5DB")
+t(pin[2][0], pin[2][1] + 0.3, "2", 5.8, "#D1D5DB")
+t(pin[39][0] + 0.45, pin[39][1], "39", 6.2, "#D1D5DB")
+t(pin[40][0] + 0.45, pin[40][1], "40", 6.2, "#D1D5DB")
+t(jx - 0.24, jy - 0.55, "JP1 (GPIO_0) — header 2×20, pitch 2,54 mm", 6.8, "white", "bold", ha="left")
+for n in (11, 29):
+    t(pin[n][0], pin[n][1] - 0.32, str(n), 5.8, "#FCA5A5")
+t(pin[12][0] + 0.32, pin[12][1] + 0.2, "12", 5.8, "#E5E7EB")
+
+# jalur header -> FPGA
+wire([(fx + 1.0, jy + p + 0.24), (fx + 1.0, fy)], "#6EE7B7", lw=1.4, dots=False)
+t(fx + 1.15, jy + 1.0, "GPIO_0[1:0] → UART_RX / UART_TX", 6.0, "#6EE7B7", ha="left", family=MONO)
+
+# legenda pin di bawah header
+legend = [(C_TX, "pin 1   GPIO_0[0]  PIN_V12  UART_RX ← TXD"),
+          (C_RX, "pin 2   GPIO_0[1]  PIN_E8   UART_TX → RXD"),
+          ("#E5E7EB", "pin 12  GND                GND ↔ GND"),
+          ("#7F1D1D", "pin 11 VCC5, pin 29 VCC3P3: jangan disambung")]
+for i, (c, s) in enumerate(legend):
+    yy = by + 2.15 - i * 0.42
+    ax.add_patch(Rectangle((jx - 0.24, yy - 0.1), 0.2, 0.2, fc=c, ec="#9CA3AF", lw=0.6, zorder=6))
+    t(jx + 0.12, yy, s, 6.4, "#FCA5A5" if i == 3 else "#E5E7EB", ha="left", family=MONO)
+
+# LED & tombol
+lx, ly = fx + 0.2, by + 0.75
+t(lx, ly + 1.2, "LED[7:0]", 7, "white", "bold", ha="left")
+led_c = {0: "#FACC15", 1: "#FACC15", 2: "#60A5FA", 3: "#A78BFA", 7: "#F87171"}
 for i in range(8):
-    xx = 72 + i * 1.8
-    ax.add_patch(Rectangle((xx - 0.5, 15.0), 1.0, 1.6, fc=led_cols[i], ec="#000", lw=0.4, zorder=3))
-label(78.3, 12.6, "LED0-1 verdict · LED2 done\nLED3 locked · LED7 tamper", 6.3, "white")
-label(78.3, 18.0, "LED[7:0]", 6.5, "#d1d5db")
+    k, x = 7 - i, lx + i * 0.42
+    ax.add_patch(Rectangle((x, ly + 0.45), 0.26, 0.42, fc=led_c.get(k, "#374151"), ec="#9CA3AF", lw=0.6, zorder=6))
+    t(x + 0.13, ly + 0.2, str(k), 5.8, "#D1D5DB")
+for i, (name, desc) in enumerate([("KEY0", "reset"), ("KEY1", "tamper")]):
+    kx = fx + 3.75 + i * 0.75
+    ax.add_patch(Rectangle((kx, ly + 0.4), 0.55, 0.55, fc="#E5E7EB", ec="#6B7280", lw=0.8, zorder=6))
+    ax.add_patch(Circle((kx + 0.275, ly + 0.675), 0.17, fc="#374151", zorder=7))
+    t(kx + 0.275, ly + 0.05, f"{name}\n{desc}", 5.6, "#D1D5DB")
 
-# ------------------------------------------------------------ kabel
-def wire(p0, p1, color, lw=2.2, via=None, ls="-"):
-    xs, ys = [p0[0]], [p0[1]]
-    for v in (via or []):
-        xs.append(v[0]); ys.append(v[1])
-    xs.append(p1[0]); ys.append(p1[1])
-    ax.plot(xs, ys, color=color, lw=lw, solid_capstyle="round", ls=ls, zorder=6)
+# ---------------------------------------------------------------- kabel
+top_y = by + bh + 0.25
+ub, pw = (bx + 8.05, by + bh - 0.2), (bx + 10.25, by + bh - 0.2)
+wire([(hx + hw, hy + 2.0), (5.6, hy + 2.0), (5.6, top_y), (ub[0], top_y), ub], C_USB)
+t(8.3, top_y + 0.2, "kabel USB A ↔ mini-B  ·  JTAG / pemrograman screener.sof", 6.8, C_USB, "bold")
+wire([(hx + hw, hy + 0.85), (5.25, hy + 0.85), (5.25, ay0 + 1.17), (ax0 - 0.05, ay0 + 1.17)], C_USB)
+wire([(pw[0], top_y + 0.05), pw], C_PWR, lw=2.6)
+t(pw[0] + 0.15, top_y + 0.12, "adaptor 5 V / 2 A", 6.6, C_PWR, "bold", ha="left")
 
-# TX adaptor -> pin 1 (FPGA RX)
-wire(pins_ad["TXD"], pin_xy[1], C_TX, via=[(55.0, pins_ad["TXD"][1]), (55.0, pin_xy[1][1])])
-# RX adaptor <- pin 2 (FPGA TX)
-wire(pins_ad["RXD"], pin_xy[2], C_RX, via=[(56.0, pins_ad["RXD"][1]), (56.0, pin_xy[2][1] + 1.6), (pin_xy[2][0], pin_xy[2][1] + 1.6)])
-# GND -> pin 12
-wire(pins_ad["GND"], pin_xy[12], C_GND, via=[(57.0, pins_ad["GND"][1]), (57.0, pin_xy[12][1])])
+ex = ax0 + aw
+wire([(ex, apin["GND"]), (pin[12][0], apin["GND"]), (pin[12][0], pin[12][1] + 0.11)], C_GND)
+wire([(ex, apin["RXD"]), (11.15, apin["RXD"]), (11.15, pin[2][1]), (pin[2][0] - 0.11, pin[2][1])], C_RX)
+wire([(ex, apin["TXD"]), (10.75, apin["TXD"]), (10.75, pin[1][1]), (pin[1][0] - 0.11, pin[1][1])], C_TX)
 
-# USB laptop -> adaptor
-wire((24, 33.5), (29.5, 35.7), C_USB, lw=2.6, via=[(26.8, 33.5), (26.8, 35.7)])
-label(26.8, 31.6, "USB", 7, C_USB, weight="bold")
-# USB laptop -> USB-Blaster
-wire((24, 38.5), (97.5, 53.2), C_USB, lw=2.6, via=[(28, 38.5), (28, 58.5), (97.5, 58.5)])
-label(62, 59.6, "Kabel USB (A ↔ mini-B): program FPGA lewat USB-Blaster II", 7.5, C_USB, weight="bold")
-# daya
-wire((103.8, 53.2), (103.8, 61.5), C_PWR, lw=2.6)
-label(103.8, 62.6, "Adaptor 5 V / 2 A", 7.5, C_PWR, weight="bold")
+# ---------------------------------------------------------------- tabel
+def table(x, y, cols, widths, rows, title):
+    t(x, y + 0.36, title, 7.6, NAVY, "bold", ha="left")
+    tw = sum(widths)
+    ax.add_patch(Rectangle((x, y - 0.36), tw, 0.36, fc=NAVY, ec=NAVY, zorder=2))
+    cx = x
+    for c, w in zip(cols, widths):
+        t(cx + 0.08, y - 0.18, c, 6.3, "white", "bold", ha="left"); cx += w
+    for r, row in enumerate(rows):
+        yy = y - 0.36 - (r + 1) * 0.33
+        if r % 2 == 0:
+            ax.add_patch(Rectangle((x, yy), tw, 0.33, fc="#F3F4F6", ec="none", zorder=1))
+        cx = x
+        for v, w in zip(row, widths):
+            t(cx + 0.08, yy + 0.165, v, 6.2, INK, ha="left", family=MONO if cx > x else SANS); cx += w
+    ax.plot([x, x + tw], [y - 0.36 - len(rows) * 0.33] * 2, color=LINE, lw=0.8)
 
-# ------------------------------------------------------------ legenda
-lx, ly = 2, 22
-box(lx, 3, 53, 21, "white", "#d1d5db", lw=1.0, r=0.8)
-label(lx + 1.5, ly, "Sambungan", 9, weight="bold", ha="left")
-rows = [
-    (C_TX, "TXD adaptor  →  JP1 pin 1  (GPIO_0[0], PIN_V12) = UART_RX FPGA"),
-    (C_RX, "RXD adaptor  ←  JP1 pin 2  (GPIO_0[1], PIN_E8)  = UART_TX FPGA"),
-    (C_GND, "GND adaptor  —  JP1 pin 12 (GND)"),
-    (C_USB, "USB laptop → adaptor UART & USB-Blaster II"),
-    (C_PWR, "Adaptor daya 5 V → jack DC board"),
-]
-for i, (c, t) in enumerate(rows):
-    yy = ly - 3 - i * 2.6
-    ax.plot([lx + 1.5, lx + 5], [yy, yy], color=c, lw=2.6)
-    label(lx + 6, yy, t, 7.3, ha="left")
-label(lx + 1.5, 5.2, "⚠ Level logika 3,3 V. Pin VCC adaptor TIDAK disambungkan. 115200 bps, 8N1.",
-      7.2, "#b91c1c", weight="bold", ha="left")
 
-plt.savefig(os.path.join(os.path.dirname(__file__), "fig", "wiring_de10nano.png"),
-            bbox_inches="tight", facecolor="white")
-print("ok")
+table(0.6, 6.55, ["Sinyal", "Adaptor", "JP1", "Pin FPGA", "Standar I/O"], [1.05, 0.95, 0.55, 1.05, 1.35],
+      [["UART_RX", "TXD", "1", "PIN_V12", "3.3-V LVTTL"],
+       ["UART_TX", "RXD", "2", "PIN_E8", "3.3-V LVTTL"],
+       ["GND", "GND", "12", "—", "—"]],
+      "Tabel koneksi (quartus/screener.qsf)")
+table(0.6, 4.25, ["Elemen", "Pin FPGA", "Fungsi"], [1.05, 1.6, 2.65],
+      [["KEY0", "PIN_AH17", "reset (aktif rendah)"],
+       ["KEY1", "PIN_AH16", "sensor tamper → zeroize"],
+       ["LED[1:0]", "PIN_AA24, W15", "vonis terakhir"],
+       ["LED[2]", "PIN_V16", "transaksi selesai"],
+       ["LED[3]", "PIN_V15", "status LOCK"],
+       ["LED[7]", "PIN_AA23", "status TAMPER"]],
+      "Antarmuka pengguna on-board (rtl/de10_nano_top.v)")
+
+# ---------------------------------------------------------------- catatan & blok judul
+t(0.6, 1.05, "⚠  Logika 3,3 V: jangan sambungkan VCC adaptor ke JP1.  UART 115200 bps, 8N1, tanpa flow control.",
+  6.8, C_PWR, "bold", ha="left")
+t(0.6, 0.65, "Target bootcamp: jalur UART diganti HPS-to-FPGA Lightweight AXI Bridge (adaptor tidak diperlukan).",
+  6.6, MUTED, ha="left")
+tbx, tby, tbw = W - 7.0, 0.3, 6.4
+ax.add_patch(Rectangle((tbx, tby), tbw, 1.6, fc="white", ec="#9CA3AF", lw=0.8, zorder=2))
+for yy in (tby + 0.55, tby + 1.05):
+    ax.plot([tbx, tbx + tbw], [yy, yy], color=LINE, lw=0.6)
+t(tbx + 0.12, tby + 1.32, "SATRIA-CHIP · Wiring demo DE10-Nano", 7.0, INK, "bold", ha="left")
+t(tbx + 0.12, tby + 0.8, "Tim Paket Kulit 12k · Telkom University", 6.3, MUTED, ha="left")
+t(tbx + tbw - 0.12, tby + 0.8, "Rev 2 · 7 Okt 2026", 6.3, MUTED, ha="right")
+t(tbx + 0.12, tby + 0.28, "Sumber pin: quartus/screener.qsf · rtl/de10_nano_top.v", 6.0, MUTED, ha="left")
+
+out = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fig", "wiring_de10nano.png")
+fig.savefig(out, dpi=200, facecolor="white")
+print("saved", out)
