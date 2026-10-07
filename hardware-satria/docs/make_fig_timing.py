@@ -21,16 +21,16 @@ def segments(key, f=lambda v: v):
             cur, s0 = v, i
     return segs
 
-STATE = {1: "Integrity Gate\n(HMAC transaksi)", 2: "Rule", 3: "", 4: "Verdict token + log\n(HMAC berantai)"}
-C = {"g": "#2563eb", "r": "#f59e0b", "s": "#10b981", "k": "#64748b"}
+STATE = {1: "Integrity Gate\n(HMAC transaksi)", 7: "Indeks sketch\n(H_Kidx akun)", 2: "", 3: "", 4: "Verdict token + log\n(HMAC berantai)"}
+C = {"g": "#2563eb", "r": "#f59e0b", "s": "#10b981", "k": "#64748b", "i": "#7c3aed"}
 fig, ax = plt.subplots(figsize=(11, 3.4), dpi=200)
 rows = []
 
 # baris 1: FSM
 y = 3
 for s, w, v in segments("state"):
-    if v in (1, 2, 4):
-        col = {1: C["g"], 2: C["r"], 4: C["s"]}[v]
+    if v in (1, 2, 4, 7):
+        col = {1: C["g"], 2: C["r"], 4: C["s"], 7: C["i"]}[v]
         ax.broken_barh([(s, w)], (y - 0.35, 0.7), color=col)
         ax.text(s + w / 2, y, STATE[v], ha="center", va="center", color="white", fontsize=7, weight="bold")
 rows.append("FSM screener_top")
@@ -53,7 +53,7 @@ for s, w, v in segments("rule_ph"):
 segs = [s for s in segments("rule_ph") if s[2] != 0]
 if segs:
     s0 = segs[0][0]; w0 = sum(s[1] for s in segs)
-    ax.annotate(f"ph != 0: {w0} cycle (start → done: 3 cycle)", (s0 + w0, y), xytext=(s0 + 25, y + 0.05), fontsize=7, va="center")
+    ax.annotate(f"ph != 0: {w0} cycle (start → done: 3 cycle); 4 baris sketch dibaca paralel", (s0 + w0, y), xytext=(s0 + 25, y + 0.05), fontsize=7, va="center")
 rows.append("rule_engine")
 
 # baris 4: log append

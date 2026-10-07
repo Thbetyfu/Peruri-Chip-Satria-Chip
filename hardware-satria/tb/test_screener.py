@@ -11,7 +11,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "model"))
 import golden as G  # noqa: E402
 
 KEY = bytes.fromhex("c0ffee00" * 2 + "5ec0de11" * 2 + "0badf00d" * 2 + "deadbeef" * 2)
-POLICY = G.Policy(window=60, vel_limit=5, amount_limit=10_000_000)
+POLICY = G.Policy(window_shift=6, vel_limit=5, amount_limit=10_000_000)
 
 A_TXN, A_TAG, A_CTRL, A_STATUS, A_RESULT, A_SEQ, A_CYC = 0x00, 0x10, 0x18, 0x19, 0x1A, 0x1B, 0x1C
 A_TOKEN, A_HEAD, A_LCOUNT, A_LIDX, A_LSEQ, A_LMETA, A_LTOK = 0x20, 0x28, 0x30, 0x31, 0x32, 0x33, 0x38
@@ -70,14 +70,14 @@ async def setup(dut):
 
 async def provision(bus, key=KEY, policy=POLICY):
     await bus.write_bytes(A_KEY, key)
-    await bus.write(A_CFG_WIN, policy.window)
+    await bus.write(A_CFG_WIN, policy.window_shift)
     await bus.write(A_CFG_VEL, policy.vel_limit)
     await bus.write(A_CFG_AHI, policy.amount_limit >> 32)
     await bus.write(A_CFG_ALO, policy.amount_limit & 0xFFFFFFFF)
     await bus.write(A_LOCK, LOCK_MAGIC)
-    for _ in range(1000):
+    for _ in range(5000):
         st = await bus.read(A_STATUS)
-        if st & 0x4:
+        if st & 0x4 and st & 0x10:          # LOCKED dan sketch selesai disapu
             return st
     raise AssertionError("vault tidak pernah LOCKED")
 
@@ -124,8 +124,8 @@ async def t01_valid_transaction_hmac_matches_golden(dut):
                                    "transaksi sah (klien baru: turunkan kunci)", G.ACCEPT)
     rec = G.make_record(account=0x1001, nonce=2, amount=10_000, tstamp=1_001, doc=b"lampiran.pdf")
     _, _, _, _, cyc = await check(bus, m, rec, G.sign_txn(KEY, rec), "transaksi sah", G.ACCEPT)
-    assert cyc < 450, f"latensi {cyc} cycle melebihi target"
-    assert cyc0 < 800, f"latensi turunkan kunci {cyc0} cycle melebihi target"
+    assert cyc < 500, f"latensi {cyc} cycle melebihi target"
+    assert cyc0 < 850, f"latensi turunkan kunci {cyc0} cycle melebihi target"
 
 
 @cocotb.test()
@@ -166,6 +166,7 @@ async def t03_domain_separation(dut):
 
 @cocotb.test()
 async def t04_replay_rejected(dut):
+    """Nonce = nomor urut per klien; replay & nonce yang sudah dipakai ditolak."""
     bus = await setup(dut)
     await provision(bus)
     m = G.Screener(KEY, POLICY)
@@ -173,8 +174,9 @@ async def t04_replay_rejected(dut):
     tag = G.sign_txn(KEY, rec)
     await check(bus, m, rec, tag, "transaksi nonce 10", G.ACCEPT)
     await check(bus, m, rec, tag, "replay transaksi yang sama", G.REJECT)
-    old = G.make_record(account=0x4004, nonce=9, amount=1_000, tstamp=101)
-    await check(bus, m, old, G.sign_txn(KEY, old), "nonce mundur (9)", G.REJECT)
+    late = G.make_record(account=0x4004, nonce=9, amount=1_000, tstamp=101)
+    await check(bus, m, late, G.sign_txn(KEY, late), "nonce 9 terlambat, belum dipakai", G.ACCEPT)
+    await check(bus, m, late, G.sign_txn(KEY, late), "replay nonce 9", G.REJECT)
     new = G.make_record(account=0x4004, nonce=11, amount=1_000, tstamp=102)
     await check(bus, m, new, G.sign_txn(KEY, new), "nonce baru (11)", G.ACCEPT)
 
@@ -187,10 +189,10 @@ async def t05_velocity_and_amount(dut):
     for i in range(7):
         rec = G.make_record(account=0x5005, nonce=i + 1, amount=5_000, tstamp=500 + i)
         exp = G.ACCEPT if i < POLICY.vel_limit else G.FLAG
-        await check(bus, m, rec, G.sign_txn(KEY, rec), f"lonjakan akun #{i+1} dlm 60 dtk", exp)
-    rec = G.make_record(account=0x5005, nonce=100, amount=5_000, tstamp=500 + 120)
+        await check(bus, m, rec, G.sign_txn(KEY, rec), f"lonjakan akun #{i+1} dlm 64 dtk", exp)
+    rec = G.make_record(account=0x5005, nonce=100, amount=5_000, tstamp=500 + 140)
     await check(bus, m, rec, G.sign_txn(KEY, rec), "setelah jendela waktu lewat", G.ACCEPT)
-    rec = G.make_record(account=0x6006, nonce=1, amount=25_000_000, tstamp=900)
+    rec = G.make_record(account=0x6006, nonce=101, amount=25_000_000, tstamp=900)
     await check(bus, m, rec, G.sign_txn(KEY, rec), "nominal di atas batas", G.ESCALATE)
 
 
@@ -261,7 +263,8 @@ async def t07_key_never_readable(dut):
     rec = G.make_record(account=0x9009, nonce=1, amount=1, tstamp=5, client=7)
     await check(bus, m, rec, G.sign_txn(KEY, rec), "isi cache kunci klien")
     secrets = set(G.words_be(KEY)) | set(G.words_be(G.token_key(KEY))) | set(G.words_be(G.client_key(KEY, 7)))
-    for sig in (vault.ipad_state, vault.opad_state, vault.tok_ipad, vault.tok_opad, dut.c_ipad, dut.c_opad):
+    for sig in (vault.ipad_state, vault.opad_state, vault.tok_ipad, vault.tok_opad, vault.idx_ipad,
+                dut.c_ipad, dut.c_opad):
         v = int(sig.value)
         assert v != 0, "state turunan harus terisi untuk uji ini"
         secrets |= set(G.words_be(v.to_bytes(32, "big")))
@@ -276,7 +279,7 @@ async def t07_key_never_readable(dut):
     for a in range(0x40, 0x48):
         assert await bus.read(a) == 0
     assert not leaked, f"kebocoran: {leaked}"
-    RESULTS.append(("sapu 256 alamat bus: kunci master/token/klien & ipad/opad", "TIDAK BOCOR", "kunci mentah = 0 setelah LOCK", 0))
+    RESULTS.append(("sapu 256 alamat bus: kunci master/token/klien/indeks & ipad/opad", "TIDAK BOCOR", "kunci mentah = 0 setelah LOCK", 0))
 
 
 @cocotb.test()
@@ -291,7 +294,7 @@ async def t08_rewrite_key_triggers_zeroize(dut):
     st = await bus.read(A_STATUS)
     assert st & 0x8 and not st & 0x4, "harus TAMPER dan tidak LOCKED"
     for sig in (dut.u_vault.ipad_state, dut.u_vault.opad_state, dut.u_vault.tok_ipad,
-                dut.u_vault.tok_opad, dut.c_ipad, dut.c_opad):
+                dut.u_vault.tok_opad, dut.u_vault.idx_ipad, dut.c_ipad, dut.c_opad):
         assert int(sig.value) == 0, "semua state kunci harus di-zeroize"
     attacker_key = bytes([0x41] * 4) + bytes(28)
     rec2 = G.make_record(account=0x8008, nonce=2, amount=1, tstamp=2)
@@ -355,19 +358,79 @@ async def t11_per_client_key_isolation(dut):
 
 
 @cocotb.test()
-async def t12_evicted_account_replay(dut):
-    """Akun yang tergusur dari tabel tetap terlindung dari replay (watermark slot)."""
+async def t12_collision_cannot_evade_velocity(dut):
+    """Serangan lama (2 rekening bergantian di slot yang sama) kini tetap FLAG."""
     bus = await setup(dut)
     await provision(bus)
     m = G.Screener(KEY, POLICY)
-    a = G.make_record(account=0x1000, nonce=1, amount=100, tstamp=100)   # slot 0
-    b = G.make_record(account=0x1040, nonce=1, amount=100, tstamp=110)   # slot 0 juga
-    await check(bus, m, a, G.sign_txn(KEY, a), "akun A (slot 0)", G.ACCEPT)
-    await check(bus, m, b, G.sign_txn(KEY, b), "akun B menggusur A", G.ACCEPT)
-    await check(bus, m, a, G.sign_txn(KEY, a), "replay transaksi lama A", G.REJECT)
-    a2 = G.make_record(account=0x1000, nonce=2, amount=100, tstamp=120)
-    await check(bus, m, a2, G.sign_txn(KEY, a2), "transaksi baru A", G.ACCEPT)
-    await check(bus, m, b, G.sign_txn(KEY, b), "replay transaksi lama B", G.REJECT)
+    A, B = 0x1000, 0x1040            # dulu berbagi slot 0 di tabel 64 slot
+    n, flags, seen = 0, 0, {A: 0, B: 0}
+    for i in range(10):
+        for acct in (A, B):
+            n += 1
+            rec = G.make_record(account=acct, nonce=n, amount=9_000_000, tstamp=1000 + 2 * i)
+            seen[acct] += 1
+            exp = G.FLAG if seen[acct] > POLICY.vel_limit else None
+            v, *_ = await check(bus, m, rec, G.sign_txn(KEY, rec), f"bergantian {acct:#x} #{seen[acct]}", exp)
+            flags += v == G.FLAG
+    assert flags >= 10, f"hanya {flags} FLAG"
+    RESULTS.append(("2 rekening bergantian, 20 transaksi Rp9 juta / 20 dtk", "FLAG", f"{flags} dari 20 ditandai", 0))
+
+
+@cocotb.test()
+async def t13_many_accounts_never_undercount(dut):
+    """300 rekening lain lalu-lalang; rekening target tetap FLAG mulai transaksi ke-6."""
+    bus = await setup(dut)
+    await provision(bus)
+    m = G.Screener(KEY, POLICY)
+    rnd = random.Random(13)
+    others = [0x200000 + rnd.randrange(1 << 24) for _ in range(300)]
+    target, n, hits = 0xDEAD01, 0, 0
+    for i in range(320):
+        n += 1
+        acct = target if i % 40 == 0 else others[i % 300]
+        rec = G.make_record(account=acct, nonce=n, amount=1_000, tstamp=3000 + i // 8)
+        if acct == target:
+            hits += 1
+            exp = G.FLAG if hits > POLICY.vel_limit else None
+            await check(bus, m, rec, G.sign_txn(KEY, rec), f"target #{hits} di tengah 300 rekening", exp)
+        else:
+            v, r, s, tok, _ = await submit(bus, rec, G.sign_txn(KEY, rec))
+            assert (v, r, s, tok) == m.process(rec, G.sign_txn(KEY, rec))
+
+
+@cocotb.test()
+async def t14_replay_window_and_clock_skew(dut):
+    """Jendela anti-replay 64 per klien; selisih jam sumber tidak lagi menolak transaksi sah."""
+    bus = await setup(dut)
+    await provision(bus)
+    m = G.Screener(KEY, POLICY)
+    cases = [(1, 0x2000, 10, 5000, "rek A ts=5000", G.ACCEPT),
+             (1, 0x2040, 12, 5001, "rek B nonce 12", G.ACCEPT),
+             (2, 0x2080, 1, 4999, "rek C BARU, klien lain, jam mundur 2 dtk", G.ACCEPT),
+             (1, 0x2000, 11, 5002, "nonce 11 datang terlambat (masih di jendela)", G.ACCEPT),
+             (1, 0x2000, 11, 5003, "nonce 11 diputar ulang", G.REJECT),
+             (1, 0x2000, 100, 5004, "nonce melompat ke 100", G.ACCEPT),
+             (1, 0x2000, 36, 5005, "nonce 36 (di luar jendela 64)", G.REJECT),
+             (1, 0x2000, 37, 5006, "nonce 37 (tepi jendela, belum dipakai)", G.ACCEPT)]
+    for cli, acct, nonce, ts, lbl, exp in cases:
+        rec = G.make_record(account=acct, nonce=nonce, amount=100, tstamp=ts, client=cli)
+        await check(bus, m, rec, G.sign_txn(KEY, rec), lbl, exp)
+
+
+@cocotb.test()
+async def t15_client_out_of_range_fail_closed(dut):
+    """Id klien di luar 0..15 ditolak; tidak dapat merebut slot klien terdaftar."""
+    bus = await setup(dut)
+    await provision(bus)
+    m = G.Screener(KEY, POLICY)
+    r1 = G.make_record(account=0x3000, nonce=1, amount=100, tstamp=10, client=0x01)
+    await check(bus, m, r1, G.sign_txn(KEY, r1), "klien 0x01 (slot 1)", G.ACCEPT)
+    r2 = G.make_record(account=0x3001, nonce=1, amount=100, tstamp=11, client=0x11)
+    v, r, *_ = await check(bus, m, r2, G.sign_txn(KEY, r2), "klien 0x11 (di luar 0..15)", G.REJECT)
+    assert r & G.R_CLIENT
+    r3 = G.make_record(account=0x3000, nonce=2, amount=100, tstamp=12, client=0x01)
+    await check(bus, m, r3, G.sign_txn(KEY, r3), "klien 0x01 tetap berjalan", G.ACCEPT)
 
 
 @cocotb.test()

@@ -18,8 +18,8 @@ def test_engine():
     e = fresh()
     r1 = e.scenario("normal")[0]
     r2 = e.scenario("normal")[0]
-    assert (r1["verdict"], r1["cycles"]) == ("ACCEPT", 750), r1      # klien baru: derivasi kunci
-    assert (r2["verdict"], r2["cycles"]) == ("ACCEPT", 411), r2      # cache hit
+    assert (r1["verdict"], r1["cycles"]) == ("ACCEPT", 820), r1      # klien baru: derivasi kunci
+    assert (r2["verdict"], r2["cycles"]) == ("ACCEPT", 481), r2      # cache hit
 
     burst = e.scenario("velocity")
     assert [r["verdict"] for r in burst] == ["ACCEPT"] * 5 + ["FLAG"], [r["verdict"] for r in burst]
@@ -35,7 +35,7 @@ def test_engine():
     assert (rep["verdict"], rep["reasons"]) == ("REJECT", "REPLAY"), rep
 
     cx = e.scenario("crypto")[0]
-    assert (cx["verdict"], cx["cycles"]) == ("ACCEPT", 750), cx      # klien lain: cache miss
+    assert (cx["verdict"], cx["cycles"]) == ("ACCEPT", 820), cx      # klien lain: cache miss
 
     assert e.audit_action("verify")["status"] == "UTUH"
     assert e.audit_action("modify")["status"] == "TERDETEKSI"

@@ -26,7 +26,7 @@ Dasar hukum: UU No. 8/2010 Pasal 26 (penyedia jasa keuangan dapat menunda transa
 ### Cara kerja chip (5 tahap on-chip)
 
 1. **Integrity Gate (HMAC-SHA256)** — rekaman 64 byte yang diubah setelah ditandatangani sistem sumber ditolak.
-2. **Rule Engine** — velocity per rekening (default >5 transaksi / 60 detik) dan ambang nominal pada Account State Memory 64 slot, plus anti-replay.
+2. **Rule Engine** — velocity per rekening (default >5 transaksi / 64 detik) dengan **Count-Min Sketch 4×4.096** berindeks hash berkunci rahasia (tabrakan antarrekening tidak pernah meloloskan lonjakan), ambang nominal, dan anti-replay nomor urut per institusi (jendela 64).
 3. **Decision Unit** — `ACCEPT` (lanjut), `FLAG` (lanjut + kandidat LTKM), `ESCALATE` (ditunda untuk ditinjau petugas), `REJECT` (palsu/replay).
 4. **Verdict Token** — HMAC dengan K_tok; core banking hanya mengeksekusi transaksi bertoken valid.
 5. **Tamper-Evident Audit Log** — keyed hash-chain 256 entri, read-only bagi host.
@@ -49,7 +49,7 @@ Dasar hukum: UU No. 8/2010 Pasal 26 (penyedia jasa keuangan dapat menunda transa
 | `str_generator.py` | Penyusun **draf** LTKM berformat XML bergaya goAML |
 | `demo_dashboard/app.py` | Dasbor demo, tanpa dependensi eksternal |
 | `test_dashboard_api.py` | Tes otomatis dasbor |
-| `fig/` | Arsitektur end-to-end, diagram blok, pewaktuan 411 cycle, wiring board |
+| `fig/` | Arsitektur end-to-end, diagram blok, pewaktuan 481 cycle, wiring board |
 
 ![Arsitektur](fig/end_to_end_architecture.png)
 
@@ -63,12 +63,12 @@ Tidak perlu `pip install` — cukup Python 3.8+:
 python demo_dashboard/app.py
 ```
 
-Buka **http://127.0.0.1:3001**. Setiap vonis dihitung oleh golden model (`hardware-satria/model/golden.py`) yang bit-exact dengan RTL, dan latensi ditampilkan sesuai hasil simulasi RTL (411/750 cycle; 407/746 cycle untuk penolakan integritas).
+Buka **http://127.0.0.1:3001**. Setiap vonis dihitung oleh golden model (`hardware-satria/model/golden.py`) yang bit-exact dengan RTL, dan latensi ditampilkan sesuai hasil simulasi RTL (481/820 cycle; 407/746 cycle untuk penolakan integritas).
 
 | Tombol | Hasil yang diharapkan |
 |---|---|
-| Transfer sah (SNAP BI) | `ACCEPT`, 750 cycle (klien baru) lalu 411 cycle |
-| Deposit bursa kripto sah | `ACCEPT`, 750 cycle (kunci klien lain diturunkan) |
+| Transfer sah (SNAP BI) | `ACCEPT`, 820 cycle (klien baru) lalu 481 cycle |
+| Deposit bursa kripto sah | `ACCEPT`, 820 cycle (kunci klien lain diturunkan) |
 | Lonjakan 6 transfer 1 rekening | 5× `ACCEPT`, ke-6 `FLAG VELOCITY` |
 | Nominal Rp250 juta | `ESCALATE AMOUNT` → ditunda, draf LTKM bisa diunduh |
 | Host mengecilkan nominal | `REJECT INTEGRITY` (407 cycle) |
@@ -84,11 +84,11 @@ Skenario yang sama di board DE10-Nano (lewat adaptor USB-UART): `python hardware
 
 ## Spesifikasi hardware (Cyclone V 5CSEBA6U23I7, Quartus Prime Lite 24.1)
 
-* Clock 50 MHz; Fmax **75,04 MHz** (setup slack +6,67 ns)
-* Latensi **411 cycle (8,22 µs)** cache hit / **750 cycle (15,00 µs)** cache miss; kapasitas core ±121.654 transaksi/detik (sebelum biaya I/O; demo lewat UART 115200 baud dibatasi link serial, ±20–40 transaksi/detik)
-* **4.346 ALM (10%)**, 8.568 register, **15 M10K (±3%)**, **0 DSP**
-* Estimasi daya **493,84 mW** @ 50 MHz (Power Analyzer, vectorless)
-* 13/13 tes core lulus (12 skenario + laporan); regresi acak 10.000/10.000 transaksi bit-exact (log: `hardware-satria/docs/log_regresi_random_10000.txt`); 0 kebocoran kunci pada sapuan 256 alamat bus
+* Clock 50 MHz; Fmax **77,38 MHz** (setup slack +7,08 ns)
+* Latensi **481 cycle (9,62 µs)** cache hit / **820 cycle (16,40 µs)** cache miss; kapasitas core ±103.950 transaksi/detik (sebelum biaya I/O; demo lewat UART 115200 baud dibatasi link serial, ±20–40 transaksi/detik)
+* **6.037 ALM (14%)**, 11.364 register, **104 M10K (19%)**, **0 DSP**
+* Estimasi daya **553,27 mW** @ 50 MHz (Power Analyzer, vectorless)
+* 16/16 tes core lulus (15 skenario + laporan, termasuk serangan dua rekening bergantian); regresi acak 10.000/10.000 transaksi bit-exact (log: `hardware-satria/docs/log_regresi_random_10000.txt`); 0 kebocoran kunci pada sapuan 256 alamat bus
 
 ---
 

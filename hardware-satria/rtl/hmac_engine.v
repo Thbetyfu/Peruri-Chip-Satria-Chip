@@ -10,6 +10,8 @@
 //   mac   = Compress(st_o, inner || PAD(len = 96 byte))                 -> 3 blok
 // HMAC standar tanpa precompute memerlukan 5 blok per pesan; precompute
 // menghemat 2 blok (~40%) dan membuat kunci mentah tidak perlu disimpan.
+// Mode HASH1 (setiap transaksi lolos integritas): d = Compress(st_idx, akun || 0)
+//   -> 1 blok; indeks Count-Min Sketch yang tidak dapat diprediksi tanpa K_idx.
 
 `default_nettype none
 
@@ -18,6 +20,7 @@ module hmac_engine (
     input  wire         rst_n,
     input  wire         start,
     input  wire         mode_precomp,  // 1 = PRECOMP, 0 = MAC
+    input  wire         mode_hash,     // 1 = HASH1: satu kompresi dari ipad_state (indeks sketch)
     input  wire [511:0] msg,           // MAC: pesan 64 byte; PRECOMP: blok kunci
     input  wire [255:0] ipad_state,
     input  wire [255:0] opad_state,
@@ -45,6 +48,7 @@ module hmac_engine (
   );
 
   reg         mode;
+  reg         mode_h;
   reg [1:0]   step;
   reg         wait_core;
   reg [511:0] msg_r;
@@ -54,21 +58,29 @@ module hmac_engine (
       busy <= 1'b0; done <= 1'b0; mac_out <= 256'd0;
       pc_st_i <= 256'd0; pc_st_o <= 256'd0;
       core_start <= 1'b0; core_init <= 256'd0; core_blk <= 512'd0;
-      mode <= 1'b0; step <= 2'd0; wait_core <= 1'b0; msg_r <= 512'd0;
+      mode <= 1'b0; mode_h <= 1'b0; step <= 2'd0; wait_core <= 1'b0; msg_r <= 512'd0;
     end else begin
       done <= 1'b0;
       core_start <= 1'b0;
 
       if (start && !busy) begin
-        busy <= 1'b1; mode <= mode_precomp; step <= 2'd0; msg_r <= msg;
+        busy <= 1'b1; mode <= mode_precomp & ~mode_hash; mode_h <= mode_hash;
+        step <= 2'd0; msg_r <= msg;
         core_start <= 1'b1; wait_core <= 1'b1;
-        if (mode_precomp) begin
+        if (mode_hash) begin
+          core_init <= ipad_state;  core_blk <= msg;
+        end else if (mode_precomp) begin
           core_init <= IV;          core_blk <= msg ^ {64{8'h36}};
         end else begin
           core_init <= ipad_state;  core_blk <= msg;
         end
       end else if (busy && wait_core && core_done) begin
-        if (mode) begin
+        if (mode_h) begin
+          // ---------------- HASH1 ----------------
+          mac_out <= core_dig;
+          busy <= 1'b0; done <= 1'b1; wait_core <= 1'b0;
+          core_init <= 256'd0; core_blk <= 512'd0;
+        end else if (mode) begin
           // ---------------- PRECOMP ----------------
           if (step == 2'd0) begin
             pc_st_i <= core_dig;

@@ -28,12 +28,12 @@ async def record(dut):
     await bus.write_bytes(T.A_TXN, rec); await bus.write_bytes(T.A_TAG, tag)
     h = cocotb.start_soon(sampler())
     await bus.write(T.A_CTRL, 1)
-    for _ in range(460):
+    for _ in range(560):
         await RisingEdge(dut.clk)
     h.cancel()
     result = await bus.read(T.A_RESULT)
     assert (result & 3) == G.ACCEPT, "waveform must show a valid transaction"
-    assert await bus.read(T.A_CYC) == 411, "waveform must show the cache-hit path"
+    assert await bus.read(T.A_CYC) == 481, "waveform must show the cache-hit path"
     out = os.path.join(os.path.dirname(__file__), "..", "build", "trace.json")
     with open(out, "w", encoding="utf-8") as stream:
         json.dump(trace, stream)

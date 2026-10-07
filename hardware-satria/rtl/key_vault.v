@@ -7,13 +7,17 @@
 //   K_tok     = HMAC(K_master, "PERURI-TOKEN-KEY-v1")      -> kunci verdict token
 //   K_client  = HMAC(K_master, "PERURI-CLIENT-KEY-v1"||id) -> kunci tiap klien
 //               (diturunkan per transaksi oleh screener_top, di-cache)
+//   K_idx     = HMAC(K_master, "PERURI-INDEX-KEY-v1")      -> kunci indeks sketch
+//               velocity; tidak pernah keluar chip sehingga pelaku tidak dapat
+//               memilih rekening yang bertabrakan di Count-Min Sketch
 // Backend cukup memegang K_tok untuk memverifikasi token/log, klien hanya
 // memegang K_client miliknya; tidak ada pihak luar yang memerlukan K_master.
 //
 // Siklus hidup:
 //   EMPTY   : kunci master dapat ditulis (provisioning di fasilitas aman)
 //   LOCKING : L0 precompute(K_master) -> L1 K_tok = HMAC(K_master, TOK)
-//             -> L2 precompute(K_tok)                         (7 blok SHA-256)
+//             -> L2 precompute(K_tok) -> L3 K_idx = HMAC(K_master, IDX)
+//             -> L4 precompute(K_idx)                        (12 blok SHA-256)
 //   LOCKED  : hanya state turunan (ipad/opad master & token) yang tersimpan;
 //             kunci mentah dihapus
 //   TAMPER  : semua material kunci di-zeroize, chip fail-closed (semua REJECT)
@@ -49,18 +53,20 @@ module key_vault (
     output reg  [255:0] opad_state,
     output reg  [255:0] tok_ipad,        // kunci token
     output reg  [255:0] tok_opad,
+    output reg  [255:0] idx_ipad,        // state kunci indeks sketch (K_idx)
     // status
     output reg          locked,
     output reg          tamper,
     output wire         ready
 );
   localparam [511:0] MSG_TOK = {"PERURI-TOKEN-KEY-v1", 360'd0};
+  localparam [511:0] MSG_IDX = {"PERURI-INDEX-KEY-v1", 360'd0};
 
   reg [255:0] key;
-  reg [1:0]   ph;        // 0 idle, 1 L0, 2 L1, 3 L2
+  reg [2:0]   ph;        // 0 idle, 1 L0, 2 L1, 3 L2, 4 L3, 5 L4
   reg         wait_eng;
 
-  assign active = (ph != 2'd0);
+  assign active = (ph != 3'd0);
   assign ready  = locked & ~tamper;
 
   // sinkronisasi pin tamper (2 flop)
@@ -78,19 +84,19 @@ module key_vault (
   always @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
       key <= 256'd0; ipad_state <= 256'd0; opad_state <= 256'd0;
-      tok_ipad <= 256'd0; tok_opad <= 256'd0;
-      locked <= 1'b0; tamper <= 1'b0; ph <= 2'd0; wait_eng <= 1'b0;
+      tok_ipad <= 256'd0; tok_opad <= 256'd0; idx_ipad <= 256'd0;
+      locked <= 1'b0; tamper <= 1'b0; ph <= 3'd0; wait_eng <= 1'b0;
       eng_start <= 1'b0; eng_mode <= 1'b0; eng_msg <= 512'd0;
     end else begin
       eng_start <= 1'b0;
       if (tamper || tamper_event) begin
         // ZEROIZE
-        tamper <= 1'b1; locked <= 1'b0; ph <= 2'd0; wait_eng <= 1'b0;
+        tamper <= 1'b1; locked <= 1'b0; ph <= 3'd0; wait_eng <= 1'b0;
         key <= 256'd0; ipad_state <= 256'd0; opad_state <= 256'd0;
-        tok_ipad <= 256'd0; tok_opad <= 256'd0; eng_msg <= 512'd0;
+        tok_ipad <= 256'd0; tok_opad <= 256'd0; idx_ipad <= 256'd0; eng_msg <= 512'd0;
       end else begin
         case (ph)
-          2'd0: if (!locked) begin
+          3'd0: if (!locked) begin
             if (key_we) begin
               case (key_idx)
                 3'd0: key[255:224] <= key_wdata; 3'd1: key[223:192] <= key_wdata;
@@ -100,24 +106,33 @@ module key_vault (
               endcase
             end else if (lock_req) begin
               // L0: precompute K_master
-              ph <= 2'd1; eng_mode <= 1'b1; eng_msg <= {key, 256'd0};
+              ph <= 3'd1; eng_mode <= 1'b1; eng_msg <= {key, 256'd0};
               eng_start <= 1'b1; wait_eng <= 1'b1;
             end
           end
-          2'd1: if (wait_eng && eng_done) begin
+          3'd1: if (wait_eng && eng_done) begin
             ipad_state <= eng_st_i; opad_state <= eng_st_o;
             key <= 256'd0;                       // kunci mentah dihapus
             // L1: K_tok = HMAC(K_master, MSG_TOK)  (state master dipakai engine)
-            ph <= 2'd2; eng_mode <= 1'b0; eng_msg <= MSG_TOK; eng_start <= 1'b1;
+            ph <= 3'd2; eng_mode <= 1'b0; eng_msg <= MSG_TOK; eng_start <= 1'b1;
           end
-          2'd2: if (wait_eng && eng_done) begin
+          3'd2: if (wait_eng && eng_done) begin
             // L2: precompute K_tok
-            ph <= 2'd3; eng_mode <= 1'b1; eng_msg <= {eng_mac, 256'd0}; eng_start <= 1'b1;
+            ph <= 3'd3; eng_mode <= 1'b1; eng_msg <= {eng_mac, 256'd0}; eng_start <= 1'b1;
+          end
+          3'd3: if (wait_eng && eng_done) begin
+            tok_ipad <= eng_st_i; tok_opad <= eng_st_o;
+            // L3: K_idx = HMAC(K_master, MSG_IDX)
+            ph <= 3'd4; eng_mode <= 1'b0; eng_msg <= MSG_IDX; eng_start <= 1'b1;
+          end
+          3'd4: if (wait_eng && eng_done) begin
+            // L4: precompute K_idx (hanya state ipad yang disimpan)
+            ph <= 3'd5; eng_mode <= 1'b1; eng_msg <= {eng_mac, 256'd0}; eng_start <= 1'b1;
           end
           default: if (wait_eng && eng_done) begin
-            tok_ipad <= eng_st_i; tok_opad <= eng_st_o;
-            eng_msg <= 512'd0;                   // hapus salinan K_tok
-            ph <= 2'd0; wait_eng <= 1'b0; locked <= 1'b1;
+            idx_ipad <= eng_st_i;
+            eng_msg <= 512'd0;                   // hapus salinan K_tok / K_idx
+            ph <= 3'd0; wait_eng <= 1'b0; locked <= 1'b1;
           end
         endcase
       end

@@ -10,7 +10,8 @@
 //   0x00-0x0F  W  TXN[0..15]   rekaman transaksi 64 byte (big-endian word)
 //   0x10-0x17  W  TAG[0..7]    HMAC-SHA256 rekaman dari klien resmi
 //   0x18       W  CTRL         bit0 = submit
-//   0x19       R  STATUS       bit0 busy, bit1 done, bit2 locked, bit3 tamper
+//   0x19       R  STATUS       bit0 busy, bit1 done, bit2 locked, bit3 tamper,
+//                              bit4 sketch siap (penyapu pasca-reset selesai)
 //   0x1A       R  RESULT       [1:0] verdict, [23:8] reasons
 //   0x1B       R  RESULT_SEQ   nomor urut entri log untuk transaksi terakhir
 //   0x1C       R  CYCLES       jumlah cycle pemrosesan transaksi terakhir
@@ -20,20 +21,24 @@
 //   0x31       W  LOG_IDX      pilih entri log untuk dibaca
 //   0x32       R  LOG_SEQ      0x33 R LOG_META     0x38-0x3F R LOG_TOKEN[0..7]
 //   0x40-0x47  W  KEY[0..7]    hanya sebelum LOCK (tanpa port baca!)
-//   0x48       RW CFG_WINDOW   0x49 RW CFG_VEL_LIMIT
+//   0x48       RW CFG_WIN_SHIFT (jendela velocity = 2^n detik)   0x49 RW CFG_VEL_LIMIT
 //   0x4A       RW CFG_AMT_HI   0x4B RW CFG_AMT_LO   (tulis hanya sebelum LOCK)
 //   0x4F       W  LOCK         tulis 0x4C4F434B ("LOCK")
 // Setiap tulis ke 0x40-0x4F setelah LOCK => TAMPER + zeroize.
 //
 // Verdict : 0 ACCEPT, 1 FLAG, 2 ESCALATE, 3 REJECT
-// Reasons : b0 INTEGRITY, b1 REPLAY, b2 VELOCITY, b3 AMOUNT, b4 DOMAIN, b5 VAULT
+// Reasons : b0 INTEGRITY, b1 REPLAY, b2 VELOCITY, b3 AMOUNT, b4 DOMAIN, b5 VAULT,
+//           b6 CLIENT
 //
 // Format rekaman transaksi (byte 0 = paling kiri):
 //   [0] domain=0x01 [1] tipe [2:3] id klien [4:7] timestamp [8:15] nonce
+//   (nonce = nomor urut per klien, jendela anti-replay 64)
 //   [16:23] id akun [24:31] nominal [32:63] hash dokumen (SHA-256)
 // Kunci: tag transaksi = HMAC(K_client(id), rekaman), dengan
 //   K_client = HMAC(K_master, "PERURI-CLIENT-KEY-v1" || id) diturunkan di chip
 //   (cache 1 entri). Token = HMAC(K_tok, pesan token), K_tok diturunkan saat LOCK.
+// Indeks sketch velocity = 4 x 12 bit teratas Compress(st_Kidx, akun || 0),
+//   K_idx diturunkan saat LOCK dan tidak pernah keluar chip.
 // Pesan token (64 byte):
 //   [0] domain=0x02 [1] verdict [2:3] reasons [4:7] seq
 //   [8:31] 24 byte pertama TAG transaksi [32:63] token sebelumnya (prev head)
@@ -41,7 +46,7 @@
 `default_nettype none
 
 module screener_top #(
-    parameter RULE_IDX_BITS = 6,
+    parameter SKETCH_IDX_BITS = 12,
     parameter LOG_DEPTH_BITS = 8
 ) (
     input  wire        clk,
@@ -88,7 +93,7 @@ module screener_top #(
   wire        v_active, v_locked, v_tamper, v_ready;
   wire        v_start, v_mode;
   wire [511:0] v_msg;
-  wire [255:0] v_ipad, v_opad, v_tipad, v_topad;
+  wire [255:0] v_ipad, v_opad, v_tipad, v_topad, v_xipad;
   wire        h_busy, h_done;
   wire [255:0] h_mac, h_st_i, h_st_o;
 
@@ -102,6 +107,7 @@ module screener_top #(
     .eng_done(h_done), .eng_mac(h_mac), .eng_st_i(h_st_i), .eng_st_o(h_st_o),
     .active(v_active),
     .ipad_state(v_ipad), .opad_state(v_opad), .tok_ipad(v_tipad), .tok_opad(v_topad),
+    .idx_ipad(v_xipad),
     .locked(v_locked), .tamper(v_tamper), .ready(v_ready)
   );
 
@@ -116,18 +122,20 @@ module screener_top #(
 
   // ----------------------------------------------------------- hmac engine
   // Pemakai: vault (saat LOCK) atau FSM utama. Sel_state memilih pasangan
-  // ipad/opad: 0 = master, 1 = klien (cache), 2 = token.
-  reg         m_start, m_mode;
+  // ipad/opad: 0 = master, 1 = klien (cache), 2 = token, 3 = indeks (HASH1).
+  reg         m_start, m_mode, m_hash;
   reg [511:0] m_msg;
   reg [1:0]   m_sel;
   wire [255:0] sel_i = v_active ? v_ipad :
-                       (m_sel == 2'd1) ? c_ipad : (m_sel == 2'd2) ? v_tipad : v_ipad;
+                       (m_sel == 2'd1) ? c_ipad : (m_sel == 2'd2) ? v_tipad :
+                       (m_sel == 2'd3) ? v_xipad : v_ipad;
   wire [255:0] sel_o = v_active ? v_opad :
                        (m_sel == 2'd1) ? c_opad : (m_sel == 2'd2) ? v_topad : v_opad;
   hmac_engine u_hmac (
     .clk(clk), .rst_n(rst_n),
     .start(v_active ? v_start : m_start),
     .mode_precomp(v_active ? v_mode : m_mode),
+    .mode_hash(v_active ? 1'b0 : m_hash),
     .msg(v_active ? v_msg : m_msg),
     .ipad_state(sel_i), .opad_state(sel_o),
     .busy(h_busy), .done(h_done),
@@ -136,14 +144,17 @@ module screener_top #(
 
   // ----------------------------------------------------------- rule engine
   reg  r_start;
-  wire r_done, r_replay, r_vel, r_amt;
-  rule_engine #(.IDX_BITS(RULE_IDX_BITS)) u_rule (
+  reg  [4*SKETCH_IDX_BITS-1:0] acct_idx;    // indeks sketch dari H_Kidx(akun)
+  wire r_done, r_replay, r_client, r_vel, r_amt, r_ready;
+  rule_engine #(.IDX_BITS(SKETCH_IDX_BITS)) u_rule (
     .clk(clk), .rst_n(rst_n), .start(r_start),
-    .account(txn[383:320]), .nonce(txn[447:384]),
-    .amount(txn[319:256]),  .tstamp(txn[479:448]),
-    .cfg_window(cfg_window), .cfg_vel_limit(cfg_vel),
+    .client(txn_cid), .nonce(txn[447:384]),
+    .amount(txn[319:256]), .tstamp(txn[479:448]),
+    .row_idx(acct_idx),
+    .cfg_win_shift(cfg_window[4:0]), .cfg_vel_limit(cfg_vel),
     .cfg_amount_limit({cfg_amt_hi, cfg_amt_lo}),
-    .done(r_done), .replay(r_replay), .velocity(r_vel), .over_amount(r_amt)
+    .done(r_done), .replay(r_replay), .client_rej(r_client),
+    .velocity(r_vel), .over_amount(r_amt), .ready(r_ready)
   );
 
   // ------------------------------------------------------------- audit log
@@ -159,23 +170,25 @@ module screener_top #(
 
   // ------------------------------------------------------------------ FSM
   localparam [2:0] S_IDLE = 3'd0, S_MAC = 3'd1, S_RULE = 3'd2,
-                   S_SIGN = 3'd3, S_LOG = 3'd4, S_KD1 = 3'd5, S_KD2 = 3'd6;
+                   S_SIGN = 3'd3, S_LOG = 3'd4, S_KD1 = 3'd5, S_KD2 = 3'd6,
+                   S_IDX = 3'd7;
   reg [2:0] state;
 
   always @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
       state <= S_IDLE; busy <= 1'b0; done_flag <= 1'b0;
       txn <= 512'd0; tag <= 256'd0;
-      cfg_window <= 32'd60; cfg_vel <= 16'd5;
+      cfg_window <= 32'd6; cfg_vel <= 16'd5;
       cfg_amt_hi <= 32'd0;  cfg_amt_lo <= 32'd10_000_000;
       log_idx <= {LOG_DEPTH_BITS{1'b0}};
       verdict <= V_REJECT; reasons <= 16'd0; res_seq <= 32'd0;
       cycles <= 32'd0; cyc_cnt <= 32'd0; token <= 256'd0;
-      m_start <= 1'b0; m_mode <= 1'b0; m_sel <= 2'd0; m_msg <= 512'd0;
+      m_start <= 1'b0; m_mode <= 1'b0; m_hash <= 1'b0; m_sel <= 2'd0; m_msg <= 512'd0;
+      acct_idx <= {4*SKETCH_IDX_BITS{1'b0}};
       r_start <= 1'b0; l_append <= 1'b0;
       c_ipad <= 256'd0; c_opad <= 256'd0; c_id <= 16'd0; c_valid <= 1'b0;
     end else begin
-      m_start <= 1'b0; r_start <= 1'b0; l_append <= 1'b0;
+      m_start <= 1'b0; r_start <= 1'b0; l_append <= 1'b0; m_hash <= 1'b0;
 
       // ---- tulis register (input dikunci selama busy)
       if (!busy) begin
@@ -241,14 +254,21 @@ module screener_top #(
             reasons <= {11'd0, (txn[511:504] != DOM_TXN), 3'b000, (h_mac != tag)};
             state   <= S_SIGN;     // ditolak: TIDAK mencapai rule engine
           end else begin
-            r_start <= 1'b1; state <= S_RULE;
+            // indeks sketch: Compress(st_Kidx, akun || 0), 1 blok
+            m_msg <= {txn[383:320], 448'd0}; m_mode <= 1'b0; m_hash <= 1'b1;
+            m_sel <= 2'd3; m_start <= 1'b1; state <= S_IDX;
           end
+        end
+
+        S_IDX: if (h_done) begin
+          acct_idx <= h_mac[255 -: 4*SKETCH_IDX_BITS];
+          r_start  <= 1'b1; state <= S_RULE;
         end
 
         // ---- Rule Engine + Decision Unit
         S_RULE: if (r_done) begin
-          reasons <= {12'd0, r_amt, r_vel, r_replay, 1'b0};
-          if      (r_replay) verdict <= V_REJECT;
+          reasons <= {9'd0, r_client, 2'b00, r_amt, r_vel, r_replay, 1'b0};
+          if      (r_replay | r_client) verdict <= V_REJECT;
           else if (r_amt)    verdict <= V_ESC;
           else if (r_vel)    verdict <= V_FLAG;
           else               verdict <= V_ACCEPT;
@@ -295,7 +315,7 @@ module screener_top #(
     if (!rst_n) readdata <= 32'd0;
     else if (read) begin
       casez (address)
-        8'h19: readdata <= {28'd0, v_tamper, v_locked, done_flag, busy | v_active};
+        8'h19: readdata <= {27'd0, r_ready, v_tamper, v_locked, done_flag, busy | v_active};
         8'h1A: readdata <= {8'd0, reasons, 6'd0, verdict};
         8'h1B: readdata <= res_seq;
         8'h1C: readdata <= cycles;

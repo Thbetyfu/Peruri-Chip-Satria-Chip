@@ -38,4 +38,5 @@ fail=0
 run_mutant bocor_cache_klien "8'h50: readdata <= c_ipad[31:0];" || fail=1
 run_mutant bocor_kunci_token "8'h51: readdata <= v_topad[63:32];" || fail=1
 run_mutant bocor_precompute  "8'h52: readdata <= h_st_o[31:0];" || fail=1
+run_mutant bocor_kunci_indeks "8'h53: readdata <= v_xipad[31:0];" || fail=1
 exit $fail

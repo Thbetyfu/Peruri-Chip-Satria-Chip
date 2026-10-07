@@ -22,7 +22,8 @@ VERDICT_ACTION = {
 REASON_TEXT = {
     "VELOCITY": "Frekuensi transaksi rekening melampaui batas kebijakan dalam jendela waktu.",
     "AMOUNT": "Nominal transaksi melampaui ambang kebijakan.",
-    "REPLAY": "Rekaman transaksi lama dikirim ulang (nonce/timestamp tidak baru).",
+    "REPLAY": "Rekaman transaksi lama dikirim ulang (nomor urut klien sudah dipakai atau di luar jendela 64).",
+    "CLIENT": "Id klien di luar 16 institusi terdaftar pada chip (fail-closed).",
     "INTEGRITY": "Tag HMAC tidak cocok: rekaman diubah setelah ditandatangani sistem sumber.",
     "DOMAIN": "Domain rekaman tidak valid.",
 }
@@ -77,4 +78,4 @@ if __name__ == "__main__":
     print(STRGenerator().generate_goaml_xml({
         "txn_id": "SEQ-0005", "channel": "SNAP BI", "account": 9876543210, "amount": 250_000_000,
         "dest": "CHASUS33XXX", "verdict": "ESCALATE", "reasons": "AMOUNT", "seq": 5,
-        "token": "ab" * 32, "cycles": 411}))
+        "token": "ab" * 32, "cycles": 481}))

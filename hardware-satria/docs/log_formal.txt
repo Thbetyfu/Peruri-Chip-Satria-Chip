@@ -1,0 +1,7 @@
+== [1] Desain asli
+   LULUS: BUKTI LULUS: 9 register rahasia & keluaran precompute tidak punya jalur ke readdata; hanya mac_out (token) yang terhubung"
+== [2] Kontrol negatif (RTL sengaja dibocorkan; harus GAGAL)
+   terdeteksi: mutan 'bocor_cache_klien' -> Assertion failed: selection is not empty: @cone @secretcells %i
+   terdeteksi: mutan 'bocor_kunci_token' -> Assertion failed: selection is not empty: @cone @secretcells %i
+   terdeteksi: mutan 'bocor_precompute' -> Assertion failed: selection is not empty: @cone t:hmac_engine %co1:+[pc_st_i,pc_st_o] %i t:hmac_engine %d
+   terdeteksi: mutan 'bocor_kunci_indeks' -> Assertion failed: selection is not empty: @cone @secretcells %i

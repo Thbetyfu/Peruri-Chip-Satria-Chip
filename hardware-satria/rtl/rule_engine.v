@@ -1,145 +1,221 @@
 // SPDX-License-Identifier: LicenseRef-Proprietary
 // SPDX-FileCopyrightText: Copyright (c) 2026 Tim Paket Kulit 12k, Telkom University. All rights reserved.
-// rule_engine.v - Deterministic Rule Engine + Account State Memory
+// rule_engine.v - Deterministic Rule Engine: anti-replay per klien + velocity
+//                 Count-Min Sketch (fail-safe) + ambang nominal
 //
 // Hanya dijalankan SETELAH Integrity Gate lolos, sehingga rekaman palsu tidak
-// pernah dapat mengubah state akun. Seluruh field (akun, nonce, nominal,
-// timestamp) berasal dari rekaman yang sudah terautentikasi HMAC, jadi host
-// yang dikompromi tidak dapat memalsukan timestamp untuk lolos velocity.
+// pernah dapat mengubah state. Seluruh field (klien, nonce, akun, nominal,
+// timestamp) berasal dari rekaman yang sudah terautentikasi HMAC.
 //
 // Aturan:
-//   REPLAY      : (a) akun dikenal dan nonce <= nonce terakhir, atau
-//                 (b) akun TIDAK ada di tabel dan timestamp <= watermark slot
-//                     -> tolak. Watermark = timestamp terbesar milik akun-akun
-//                     yang pernah tergusur dari slot tsb, sehingga transaksi
-//                     lama milik akun yang sudah tergusur tidak bisa diputar ulang.
-//   VELOCITY    : jumlah transaksi akun dalam jendela waktu > cfg_vel_limit
+//   CLIENT      : id klien di luar 0..15 -> tolak (fail-closed). Satu chip
+//                 melayani maks. 16 institusi; slot = id, sehingga tidak ada
+//                 tabrakan, penggusuran, atau perebutan slot antarklien.
+//   REPLAY      : nonce = nomor urut per klien. Jendela geser 64 nonce
+//                 (gaya IPsec): nonce <= hi-64, atau nonce yang sudah terlihat
+//                 di bitmap -> tolak. Transaksi yang datang tidak berurutan
+//                 tetap diterima selama masih di dalam jendela.
+//   VELOCITY    : Count-Min Sketch 4 baris x 2^IDX_BITS penghitung. Indeks tiap
+//                 baris = potongan H_Kidx(akun) (dihitung screener_top dengan
+//                 kunci rahasia chip). Tiap penghitung menyimpan {epoch, cur,
+//                 prev}; perkiraan = cur + prev, lalu MINIMUM antar baris.
+//                 Epoch = timestamp >> cfg_win_shift. Perkiraan tidak pernah
+//                 lebih kecil dari jumlah transaksi akun dalam jendela
+//                 2^cfg_win_shift detik terakhir: tabrakan hanya menaikkan
+//                 perkiraan (FLAG berlebih), tidak pernah meloloskan.
 //   OVER_AMOUNT : nominal > cfg_amount_limit
 //
-// Account State Memory: tabel direct-mapped 2^IDX_BITS entri (indeks = bit
-// bawah ID akun), disimpan di RAM yang dapat di-infer (M10K) + bit valid di
-// register. Saat terjadi collision, akun lama tergusur dan timestamp terakhirnya
-// dinaikkan ke watermark slot (lihat REPLAY-b).
-//
-// Latensi: 3 cycle (ph1 baca RAM, ph2 evaluasi + tulis, done).
+// Setelah reset, seluruh sketch dihapus oleh penyapu internal (2^IDX_BITS
+// cycle, 82 us @ 50 MHz); selama itu `ready` = 0 dan permintaan ditahan.
+// Latensi: 4 cycle (pipeline: latch, tahap A, tahap B, keputusan + tulis).
 
 `default_nettype none
 
 module rule_engine #(
-    parameter IDX_BITS = 6
+    parameter IDX_BITS = 12
 ) (
-    input  wire        clk,
-    input  wire        rst_n,
-    input  wire        start,
-    input  wire [63:0] account,
-    input  wire [63:0] nonce,
-    input  wire [63:0] amount,
-    input  wire [31:0] tstamp,
-    input  wire [31:0] cfg_window,
-    input  wire [15:0] cfg_vel_limit,
-    input  wire [63:0] cfg_amount_limit,
-    output reg         done,
-    output reg         replay,
-    output reg         velocity,
-    output reg         over_amount
+    input  wire                  clk,
+    input  wire                  rst_n,
+    input  wire                  start,
+    input  wire [15:0]           client,
+    input  wire [63:0]           nonce,
+    input  wire [63:0]           amount,
+    input  wire [31:0]           tstamp,
+    input  wire [4*IDX_BITS-1:0] row_idx,      // {idx0, idx1, idx2, idx3}
+    input  wire [4:0]            cfg_win_shift,
+    input  wire [15:0]           cfg_vel_limit,
+    input  wire [63:0]           cfg_amount_limit,
+    output reg                   done,
+    output reg                   replay,
+    output reg                   client_rej,
+    output reg                   velocity,
+    output reg                   over_amount,
+    output wire                  ready
 );
   localparam N = (1 << IDX_BITS);
 
-  // ---------------- account state memory ----------------
-  reg [N-1:0]  ent_valid;
-  reg [N-1:0]  wm_valid;            // watermark slot sudah pernah diisi
-  reg [63:0]   mem_acct  [0:N-1];
-  reg [63:0]   mem_nonce [0:N-1];
-  reg [31:0]   mem_win   [0:N-1];
-  reg [15:0]   mem_cnt   [0:N-1];
-  reg [31:0]   mem_lts   [0:N-1];   // timestamp terakhir akun penghuni slot
-  reg [31:0]   mem_wm    [0:N-1];   // watermark slot (akun-akun tergusur)
+  // ------------------------------------------------ Count-Min Sketch (M10K)
+  // entri 48 bit = {epoch[15:0], cur[15:0], prev[15:0]}
+  reg [47:0] sk0 [0:N-1];
+  reg [47:0] sk1 [0:N-1];
+  reg [47:0] sk2 [0:N-1];
+  reg [47:0] sk3 [0:N-1];
 
-  wire [IDX_BITS-1:0] idx = account[IDX_BITS-1:0];
+  // penyapu: hapus seluruh sketch setelah reset
+  reg                clr;
+  reg [IDX_BITS-1:0] clr_a;
+  assign ready = ~clr;
 
-  // port baca sinkron (ph1)
-  reg [63:0] r_acct, r_nonce;
-  reg [31:0] r_win;
-  reg [15:0] r_cnt;
-  reg [31:0] r_lts, r_wm;
-  reg        r_valid;
-  reg        r_valid_wm;
+  wire [IDX_BITS-1:0] i0 = row_idx[4*IDX_BITS-1 -: IDX_BITS];
+  wire [IDX_BITS-1:0] i1 = row_idx[3*IDX_BITS-1 -: IDX_BITS];
+  wire [IDX_BITS-1:0] i2 = row_idx[2*IDX_BITS-1 -: IDX_BITS];
+  wire [IDX_BITS-1:0] i3 = row_idx[1*IDX_BITS-1 -: IDX_BITS];
 
-  // port tulis (ph2)
-  reg                we;
-  reg [IDX_BITS-1:0] wa;
-  reg [63:0]         w_acct, w_nonce;
-  reg [31:0]         w_win;
-  reg [15:0]         w_cnt;
-  reg [31:0]         w_lts;
-  reg                we_wm;
-  reg [31:0]         w_wm;
+  reg [47:0] r0, r1, r2, r3;           // port baca sinkron
+  reg        we;
+  reg [IDX_BITS-1:0] wa0, wa1, wa2, wa3;
+  reg [47:0] wd0, wd1, wd2, wd3;
+
+  wire                p_we = we | clr;
+  wire [IDX_BITS-1:0] p0 = clr ? clr_a : wa0;
+  wire [IDX_BITS-1:0] p1 = clr ? clr_a : wa1;
+  wire [IDX_BITS-1:0] p2 = clr ? clr_a : wa2;
+  wire [IDX_BITS-1:0] p3 = clr ? clr_a : wa3;
 
   always @(posedge clk) begin
-    if (we) begin
-      mem_acct[wa]  <= w_acct;
-      mem_nonce[wa] <= w_nonce;
-      mem_win[wa]   <= w_win;
-      mem_cnt[wa]   <= w_cnt;
-      mem_lts[wa]   <= w_lts;
+    if (p_we) begin
+      sk0[p0] <= clr ? 48'd0 : wd0; sk1[p1] <= clr ? 48'd0 : wd1;
+      sk2[p2] <= clr ? 48'd0 : wd2; sk3[p3] <= clr ? 48'd0 : wd3;
     end
-    if (we_wm) mem_wm[wa] <= w_wm;
-    r_acct  <= mem_acct[idx];
-    r_nonce <= mem_nonce[idx];
-    r_win   <= mem_win[idx];
-    r_cnt   <= mem_cnt[idx];
-    r_lts   <= mem_lts[idx];
-    r_wm    <= mem_wm[idx];
+    r0 <= sk0[i0]; r1 <= sk1[i1]; r2 <= sk2[i2]; r3 <= sk3[i3];
   end
 
-  // ---------------- evaluasi (kombinasional pada ph2) ----------------
-  wire        hit      = r_valid && (r_acct == account);
-  wire        evict    = r_valid && !hit;
-  wire [31:0] cur_wm   = r_valid_wm ? r_wm : 32'd0;
-  wire        is_rep   = hit ? (nonce <= r_nonce) : (tstamp <= cur_wm);
-  wire [31:0] new_lts  = (hit && r_lts > tstamp) ? r_lts : tstamp;
-  wire [31:0] new_wm   = (r_lts > cur_wm) ? r_lts : cur_wm;
-  wire [31:0] elapsed  = tstamp - r_win;
-  wire        in_win   = hit && (elapsed < cfg_window);
-  wire [15:0] new_cnt  = in_win ? ((r_cnt == 16'hFFFF) ? 16'hFFFF : r_cnt + 16'd1) : 16'd1;
-  wire [31:0] new_win  = in_win ? r_win : tstamp;
+  // ------------------------------------------------ tabel klien (register)
+  reg [15:0] cl_valid;
+  reg [63:0] cl_hi [0:15];
+  reg [63:0] cl_bm [0:15];
+
+  wire [3:0]  cs      = client[3:0];
+
+  // ------------------------------------------------ pipeline 4 fase
+  // ph0: start -> latch epoch & entri klien (RAM sketch dibaca pada edge ini)
+  // ph1: tahap A  - pembaruan tiap baris sketch; perbandingan nonce 64-bit
+  // ph2: tahap B  - minimum antar baris; keputusan replay; bitmap baru
+  // ph3: keputusan akhir + tulis RAM/tabel klien, done
+  reg [15:0] ep_r, epm1_r;
+  reg        e_valid;
+  reg [63:0] e_hi, e_bm;
+  reg        c_rej_r;
+
+  function [64:0] upd;                 // {est[16:0], entri baru[47:0]}
+    input [47:0] e; input [15:0] ep_n; input [15:0] ep_p;
+    reg [15:0] cur, prv, ncur;
+    begin
+      cur  = (e[47:32] == ep_n) ? e[31:16] : 16'd0;
+      prv  = (e[47:32] == ep_n) ? e[15:0]  : ((e[47:32] == ep_p) ? e[31:16] : 16'd0);
+      ncur = (cur == 16'hFFFF) ? cur : cur + 16'd1;
+      upd  = {{1'b0, ncur} + {1'b0, prv}, ep_n, ncur, prv};
+    end
+  endfunction
+
+  // tahap A (kombinasional pada ph1)
+  wire [31:0] ep32  = tstamp >> cfg_win_shift;
+  wire [64:0] u0 = upd(r0, ep_r, epm1_r);
+  wire [64:0] u1 = upd(r1, ep_r, epm1_r);
+  wire [64:0] u2 = upd(r2, ep_r, epm1_r);
+  wire [64:0] u3 = upd(r3, ep_r, epm1_r);
+  wire        newer_c = !e_valid || (nonce > e_hi);
+  wire [63:0] d_up    = nonce - e_hi;
+  wire [63:0] off     = e_hi - nonce;
+
+  reg [64:0] ua0, ua1, ua2, ua3;
+  reg        newer_a, dge_a, oge_a;
+  reg [5:0]  d6_a, o6_a;
+
+  // tahap B (kombinasional pada ph2)
+  wire [16:0] m01 = (ua0[64:48] < ua1[64:48]) ? ua0[64:48] : ua1[64:48];
+  wire [16:0] m23 = (ua2[64:48] < ua3[64:48]) ? ua2[64:48] : ua3[64:48];
+  wire [16:0] est = (m01 < m23) ? m01 : m23;
+  wire        too_old = !newer_a && oge_a;
+  wire        seen    = !newer_a && !oge_a && e_bm[o6_a];
+  wire        is_rep  = !c_rej_r && (too_old || seen);
+  wire [63:0] new_bm  = !e_valid ? 64'd1 :
+                        newer_a  ? (dge_a ? 64'd1 : ((e_bm << d6_a) | 64'd1)) :
+                                   (e_bm | (64'd1 << o6_a));
+
+  reg [16:0] est_b;
+  reg        rep_b, ok_b;
+  reg [63:0] hi_b, bm_b;
 
   reg [1:0] ph;
+  reg       pend;
+  integer j;
 
   always @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
-      ph <= 2'd0; done <= 1'b0;
-      replay <= 1'b0; velocity <= 1'b0; over_amount <= 1'b0;
-      ent_valid <= {N{1'b0}}; r_valid <= 1'b0;
-      wm_valid <= {N{1'b0}}; r_valid_wm <= 1'b0;
-      we_wm <= 1'b0; w_wm <= 32'd0; w_lts <= 32'd0;
-      we <= 1'b0; wa <= {IDX_BITS{1'b0}};
-      w_acct <= 64'd0; w_nonce <= 64'd0; w_win <= 32'd0; w_cnt <= 16'd0;
+      ph <= 2'd0; done <= 1'b0; pend <= 1'b0;
+      clr <= 1'b1; clr_a <= {IDX_BITS{1'b0}};
+      replay <= 1'b0; client_rej <= 1'b0; velocity <= 1'b0; over_amount <= 1'b0;
+      we <= 1'b0;
+      wa0 <= {IDX_BITS{1'b0}}; wa1 <= {IDX_BITS{1'b0}};
+      wa2 <= {IDX_BITS{1'b0}}; wa3 <= {IDX_BITS{1'b0}};
+      wd0 <= 48'd0; wd1 <= 48'd0; wd2 <= 48'd0; wd3 <= 48'd0;
+      ep_r <= 16'd0; epm1_r <= 16'd0; e_valid <= 1'b0; e_hi <= 64'd0; e_bm <= 64'd0;
+      c_rej_r <= 1'b0;
+      ua0 <= 65'd0; ua1 <= 65'd0; ua2 <= 65'd0; ua3 <= 65'd0;
+      newer_a <= 1'b0; dge_a <= 1'b0; oge_a <= 1'b0; d6_a <= 6'd0; o6_a <= 6'd0;
+      est_b <= 17'd0; rep_b <= 1'b0; ok_b <= 1'b0; hi_b <= 64'd0; bm_b <= 64'd0;
+      cl_valid <= 16'd0;
+      for (j = 0; j < 16; j = j + 1) begin
+        cl_hi[j] <= 64'd0; cl_bm[j] <= 64'd0;
+      end
     end else begin
       done <= 1'b0;
       we   <= 1'b0;
-      we_wm <= 1'b0;
+      if (clr) begin
+        clr_a <= clr_a + 1'b1;
+        if (&clr_a) clr <= 1'b0;
+      end
+      if (start) pend <= 1'b1;
       case (ph)
-        2'd0: if (start) begin
-          r_valid <= ent_valid[idx];      // RAM dibaca pada edge yang sama
-          r_valid_wm <= wm_valid[idx];
-          ph <= 2'd1;
+        2'd0: if ((start || pend) && !clr) begin   // RAM dibaca pada edge yang sama
+          ep_r    <= ep32[15:0];
+          epm1_r  <= ep32[15:0] - 16'd1;
+          e_valid <= cl_valid[cs];
+          e_hi    <= cl_hi[cs];
+          e_bm    <= cl_bm[cs];
+          c_rej_r <= |client[15:4];
+          ph <= 2'd1; pend <= 1'b0;
         end
-        2'd1: begin
-          ph <= 2'd2;                     // data RAM (r_*) valid di ph2
+        2'd1: begin                               // tahap A
+          ua0 <= u0; ua1 <= u1; ua2 <= u2; ua3 <= u3;
+          newer_a <= newer_c;
+          dge_a   <= |d_up[63:6];
+          oge_a   <= |off[63:6];
+          d6_a    <= d_up[5:0];
+          o6_a    <= off[5:0];
+          ph <= 2'd2;
         end
-        default: begin
-          replay      <= is_rep;
-          velocity    <= !is_rep && (new_cnt > cfg_vel_limit);
-          over_amount <= !is_rep && (amount  > cfg_amount_limit);
-          if (!is_rep) begin
-            we <= 1'b1; wa <= idx;
-            w_acct <= account; w_nonce <= nonce; w_win <= new_win; w_cnt <= new_cnt;
-            w_lts <= new_lts;
-            ent_valid[idx] <= 1'b1;
-            if (evict) begin                // akun lama tergusur -> naikkan watermark
-              we_wm <= 1'b1; w_wm <= new_wm; wm_valid[idx] <= 1'b1;
-            end
+        2'd2: begin                               // tahap B
+          est_b <= est;
+          rep_b <= is_rep;
+          ok_b  <= !c_rej_r && !is_rep;
+          hi_b  <= newer_a ? nonce : e_hi;
+          bm_b  <= new_bm;
+          ph <= 2'd3;
+        end
+        default: begin                            // keputusan + tulis
+          client_rej  <= c_rej_r;
+          replay      <= rep_b;
+          velocity    <= ok_b && (est_b > {1'b0, cfg_vel_limit});
+          over_amount <= ok_b && (amount > cfg_amount_limit);
+          if (ok_b) begin
+            cl_valid[cs] <= 1'b1;
+            cl_hi[cs]    <= hi_b;
+            cl_bm[cs]    <= bm_b;
+            we  <= 1'b1;
+            wa0 <= i0; wa1 <= i1; wa2 <= i2; wa3 <= i3;
+            wd0 <= ua0[47:0]; wd1 <= ua1[47:0]; wd2 <= ua2[47:0]; wd3 <= ua3[47:0];
           end
           done <= 1'b1;
           ph   <= 2'd0;

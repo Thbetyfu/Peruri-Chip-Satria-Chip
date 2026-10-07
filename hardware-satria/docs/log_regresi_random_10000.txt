@@ -1,40 +1,43 @@
-     -.--ns INFO     gpi                                ../gpi/GpiCommon.cpp:242  in gpi_load_users                  Loaded entry library: '/usr/lib/x86_64-linux-gnu/libpython3.13.so.1.0'
-     -.--ns INFO     gpi                                ../gpi/GpiCommon.cpp:233  in gpi_load_users                  Running entry func 'initialize' from loaded library '<site-packages>/cocotb/simulator.cpython-313-x86_64-linux-gnu.so'
-     -.--ns INFO     pygpi                              ..ib/pygpi/embed.cpp:114  in initialize                      Using Python 3.13.16 interpreter at /usr/bin/python3
-     -.--ns INFO     gpi                                ../gpi/GpiCommon.cpp:74   in gpi_print_registered_impl       GPI: VPI support registered
-     0.00ns INFO     cocotb.initialize                  Seeding Python random module with 1791357497
-     0.00ns INFO     cocotb.initialize                  Initialized cocotb v2.1.0 from <site-packages>/cocotb
-     0.00ns INFO     cocotb.initialize                  Running on Icarus Verilog version 12.0 (stable)
-     0.00ns INFO     cocotb.regression                  Running tests
+     -.--ns INFO     gpi                                ../gpi/GpiCommon.cpp:216  in gpi_load_users                  Running entry func 'initialize' from loaded library '/home/claude/oss-cad-suite/lib/python3.11/site-packages/cocotb-2.1.0.dev0+41564633-py3.11-linux-x64.egg/cocotb/libs/libcocotb.so'
+     -.--ns INFO     gpi                                ..mbed/gpi_embed.cpp:96   in initialize                      Using Python 3.11.6 interpreter at /home/claude/oss-cad-suite/bin/tabbypy3
+     0.00ns INFO     cocotb                             Running on Icarus Verilog version 14.0 (devel)
+     0.00ns INFO     cocotb                             Seeding Python random module with 1791379709
+     0.00ns INFO     cocotb                             Initialized cocotb v2.1.0.dev0+41564633 from /home/claude/oss-cad-suite/lib/python3.11/site-packages/cocotb-2.1.0.dev0+41564633-py3.11-linux-x64.egg/cocotb
+     0.00ns INFO     cocotb                             Running tests
      0.00ns INFO     cocotb.regression                  running test_random.random_regression (1/1)
-15040390.00ns INFO     cocotb.screener_top                 1000/10000 transaksi cocok bit-exact (97 s)
-30070710.00ns INFO     cocotb.screener_top                 2000/10000 transaksi cocok bit-exact (196 s)
-45300070.00ns INFO     cocotb.screener_top                 3000/10000 transaksi cocok bit-exact (294 s)
-60399430.00ns INFO     cocotb.screener_top                 4000/10000 transaksi cocok bit-exact (393 s)
-75396630.00ns INFO     cocotb.screener_top                 5000/10000 transaksi cocok bit-exact (493 s)
-90469430.00ns INFO     cocotb.screener_top                 6000/10000 transaksi cocok bit-exact (592 s)
-105636470.00ns INFO     cocotb.screener_top                 7000/10000 transaksi cocok bit-exact (694 s)
-120694790.00ns INFO     cocotb.screener_top                 8000/10000 transaksi cocok bit-exact (793 s)
-135950310.00ns INFO     cocotb.screener_top                 9000/10000 transaksi cocok bit-exact (894 s)
-151082870.00ns INFO     cocotb.screener_top                10000/10000 transaksi cocok bit-exact (990 s)
-151083230.00ns INFO     cocotb.screener_top                RINGKASAN
+16523390.00ns INFO     cocotb.screener_top                 1000/10000 transaksi cocok bit-exact (86 s)
+32857070.00ns INFO     cocotb.screener_top                 2000/10000 transaksi cocok bit-exact (171 s)
+49306110.00ns INFO     cocotb.screener_top                 3000/10000 transaksi cocok bit-exact (255 s)
+65523350.00ns INFO     cocotb.screener_top                 4000/10000 transaksi cocok bit-exact (339 s)
+81864190.00ns INFO     cocotb.screener_top                 5000/10000 transaksi cocok bit-exact (427 s)
+98344870.00ns INFO     cocotb.screener_top                 6000/10000 transaksi cocok bit-exact (510 s)
+114628350.00ns INFO     cocotb.screener_top                 7000/10000 transaksi cocok bit-exact (591 s)
+130903510.00ns INFO     cocotb.screener_top                 8000/10000 transaksi cocok bit-exact (674 s)
+147242550.00ns INFO     cocotb.screener_top                 9000/10000 transaksi cocok bit-exact (760 s)
+163512710.00ns INFO     cocotb.screener_top                10000/10000 transaksi cocok bit-exact (843 s)
+163513070.00ns INFO     cocotb.screener_top                RINGKASAN
                                                         | Jenis transaksi | Verdict | Jumlah |
                                                         |---|---|---|
-                                                        | bitflip | REJECT | 792 |
-                                                        | jam_mundur | ACCEPT | 665 |
-                                                        | jam_mundur | REJECT | 5 |
-                                                        | kunci_klien_lain | REJECT | 475 |
-                                                        | nominal_besar | ESCALATE | 790 |
-                                                        | replay | REJECT | 1229 |
-                                                        | sah | ACCEPT | 5550 |
-                                                        | tag_salah | REJECT | 494 |
+                                                        | bitflip | REJECT | 802 |
+                                                        | jam_mundur | ACCEPT | 638 |
+                                                        | jam_mundur | FLAG | 6 |
+                                                        | klien_bentrok | REJECT | 208 |
+                                                        | kunci_klien_lain | REJECT | 472 |
+                                                        | nominal_besar | ESCALATE | 805 |
+                                                        | nonce_terlambat | ACCEPT | 223 |
+                                                        | nonce_terlambat | FLAG | 2 |
+                                                        | nonce_terlambat | REJECT | 193 |
+                                                        | replay | REJECT | 1199 |
+                                                        | sah | ACCEPT | 4838 |
+                                                        | sah | FLAG | 109 |
+                                                        | tag_salah | REJECT | 505 |
                                                         | **total** | **semua bit-exact dengan golden model** | **10000** |
-151083230.00ns INFO     cocotb.regression                  test_random.random_regression passed
-151083230.00ns INFO     cocotb.regression                  ***************************************************************************************
+163513070.00ns INFO     cocotb.regression                  test_random.random_regression passed
+163513070.00ns INFO     cocotb.regression                  ***************************************************************************************
                                                         ** TEST                           STATUS  SIM TIME (ns)  REAL TIME (s)  RATIO (ns/s) **
                                                         ***************************************************************************************
-                                                        ** test_random.random_regression   PASS   151083230.00         990.27     152568.03  **
+                                                        ** test_random.random_regression   PASS   163513070.00         842.98     193971.27  **
                                                         ***************************************************************************************
-                                                        ** TESTS=1 PASS=1 FAIL=0 SKIP=0           151083230.00         990.27     152567.92  **
+                                                        ** TESTS=1 PASS=1 FAIL=0 SKIP=0           163513070.00         842.98     193969.97  **
                                                         ***************************************************************************************
-EXIT=0 DURATION=991s
+Simulation failed: -11

@@ -16,19 +16,19 @@ set_global_assignment -name VERILOG_FILE ../rtl/uart_bridge.v
 set_global_assignment -name VERILOG_FILE ../rtl/de10_nano_top.v
 set_global_assignment -name SDC_FILE screener.sdc
 
-set_location_assignment PIN_V11  -to FPGA_CLK1_50
+set_location_assignment PIN_V11 -to FPGA_CLK1_50
 set_location_assignment PIN_AH17 -to KEY[0]
 set_location_assignment PIN_AH16 -to KEY[1]
-set_location_assignment PIN_W15  -to LED[0]
+set_location_assignment PIN_W15 -to LED[0]
 set_location_assignment PIN_AA24 -to LED[1]
-set_location_assignment PIN_V16  -to LED[2]
-set_location_assignment PIN_V15  -to LED[3]
+set_location_assignment PIN_V16 -to LED[2]
+set_location_assignment PIN_V15 -to LED[3]
 set_location_assignment PIN_AF26 -to LED[4]
 set_location_assignment PIN_AE26 -to LED[5]
-set_location_assignment PIN_Y16  -to LED[6]
+set_location_assignment PIN_Y16 -to LED[6]
 set_location_assignment PIN_AA23 -to LED[7]
-set_location_assignment PIN_V12  -to UART_RX
-set_location_assignment PIN_E8   -to UART_TX
+set_location_assignment PIN_V12 -to UART_RX
+set_location_assignment PIN_E8 -to UART_TX
 set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to FPGA_CLK1_50
 set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to KEY[*]
 set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to LED[*]
@@ -39,4 +39,7 @@ set_global_assignment -name LAST_QUARTUS_VERSION "24.1std.0 Lite Edition"
 set_global_assignment -name PARTITION_NETLIST_TYPE SOURCE -section_id Top
 set_global_assignment -name PARTITION_FITTER_PRESERVATION_LEVEL PLACEMENT_AND_ROUTING -section_id Top
 set_global_assignment -name PARTITION_COLOR 16764057 -section_id Top
+set_global_assignment -name TIMING_ANALYZER_REPORT_WORST_CASE_TIMING_PATHS ON
+set_global_assignment -name TIMING_ANALYZER_REPORT_NUM_WORST_CASE_TIMING_PATHS 10
+
 set_instance_assignment -name PARTITION_HIERARCHY root_partition -to | -section_id Top

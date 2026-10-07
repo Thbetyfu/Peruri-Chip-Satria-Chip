@@ -5,7 +5,7 @@ Pemakaian:  pip install pyserial
             python host/demo_uart.py /dev/ttyUSB0  (Linux)
 
 Skenario: provisioning kunci + LOCK, transaksi sah, bit-flip, replay,
-lonjakan (velocity), nominal besar, lalu ekspor & verifikasi rantai log.
+lonjakan (velocity), dua rekening bergantian, nominal besar, lalu ekspor & verifikasi rantai log.
 """
 import os
 import sys
@@ -70,16 +70,24 @@ def main(port):
         print(f"   {label:34s} -> {G.VERDICT_NAME[v]:8s} {G.reasons_str(r):18s} "
               f"seq={s} cycles={cyc} {'✓ cocok model' if ok else '✗ BEDA DARI MODEL'}")
 
-    print("== Transaksi")
+    print("== Transaksi (nonce = nomor urut klien 1)")
     r1 = G.make_record(0x1001, 1, 10_000, 1000, b"surat.pdf")
     run("transaksi sah", r1, G.sign_txn(KEY, r1))
     bad = bytearray(G.make_record(0x1001, 2, 10_000, 1001)); t = G.sign_txn(KEY, bytes(bad)); bad[40] ^= 1
     run("satu bit diubah", bytes(bad), t)
     run("replay transaksi pertama", r1, G.sign_txn(KEY, r1))
+    n = 2
     for i in range(6):
-        r = G.make_record(0x2002, i + 1, 5_000, 2000 + i)
+        n += 1
+        r = G.make_record(0x2002, n, 5_000, 2000 + i)
         run(f"lonjakan akun #{i+1}", r, G.sign_txn(KEY, r))
-    r = G.make_record(0x3003, 1, 50_000_000, 3000)
+    for i in range(6):                       # dua rekening bergantian: tetap FLAG
+        for acct in (0x1000, 0x1040):
+            n += 1
+            r = G.make_record(acct, n, 9_000_000, 2500 + 2 * i)
+            run(f"bergantian {acct:#x} #{i+1}", r, G.sign_txn(KEY, r))
+    n += 1
+    r = G.make_record(0x3003, n, 50_000_000, 3000)
     run("nominal besar", r, G.sign_txn(KEY, r))
 
     print("== Ekspor & verifikasi rantai log")

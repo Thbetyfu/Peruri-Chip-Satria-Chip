@@ -3,8 +3,9 @@ SATRIA-CHIP: Dasbor Demo Penegakan APU-PPT Berbasis Silikon
 
 Setiap vonis di dasbor ini DIHITUNG oleh golden model (hardware-satria/model/golden.py),
 model referensi yang bit-exact dengan RTL (diverifikasi cocotb pada 10.000 transaksi acak).
-Latensi (cycle) mengikuti hasil simulasi RTL: 411/750 cycle untuk transaksi diproses,
+Latensi (cycle) mengikuti hasil simulasi RTL: 481/820 cycle untuk transaksi diproses,
 407/746 cycle untuk penolakan integritas (cache kunci klien hit/miss).
+Nonce = nomor urut per klien (institusi), seperti yang diterbitkan gateway sumber.
 
 Tanpa dependensi eksternal - cukup Python 3.8+:
     python demo_dashboard/app.py            -> http://127.0.0.1:3001
@@ -31,7 +32,8 @@ from aml_gateway_simulator import DEMO_MASTER_KEY, AMLGatewaySimulator  # noqa: 
 from str_generator import STRGenerator  # noqa: E402
 
 AMOUNT_LIMIT = 100_000_000      # ambang nominal demo (Rp); dapat dikonfigurasi sebelum LOCK
-VEL_LIMIT, WINDOW = 5, 60       # >5 transaksi per rekening dalam 60 detik -> FLAG
+VEL_LIMIT, WIN_SHIFT = 5, 6    # >5 transaksi per rekening dalam 2^6 = 64 detik -> FLAG
+WINDOW = 1 << WIN_SHIFT
 
 ACTION = {
     "ACCEPT": "Dieksekusi core banking (token valid)",
@@ -52,7 +54,7 @@ class DemoEngine:
     def reset(self):
         self.gw = AMLGatewaySimulator(DEMO_MASTER_KEY)
         self.chip = G.Screener(key=DEMO_MASTER_KEY,
-                               policy=G.Policy(window=WINDOW, vel_limit=VEL_LIMIT, amount_limit=AMOUNT_LIMIT))
+                               policy=G.Policy(window_shift=WIN_SHIFT, vel_limit=VEL_LIMIT, amount_limit=AMOUNT_LIMIT))
         self.ts = 1_791_300_000
         self.nonces = {}
         self.cached_client = None
@@ -62,9 +64,10 @@ class DemoEngine:
         self.audit = {"status": "-", "detail": "Belum diverifikasi."}
 
     # ------------------------------------------------------------ util
-    def _nonce(self, acct):
-        self.nonces[acct] = self.nonces.get(acct, 0) + 1
-        return self.nonces[acct]
+    def _nonce(self, client):
+        """Nomor urut per klien (partner SNAP BI / bursa kripto)."""
+        self.nonces[client] = self.nonces.get(client, 0) + 1
+        return self.nonces[client]
 
     def _tick(self, s):
         self.ts += s
@@ -72,7 +75,7 @@ class DemoEngine:
 
     def _snap(self, acct, amount, dest="BMRIIDJA:1234567890", dt=7):
         return self.gw.parse_snap_bi_transfer({"partner_id": 1, "source_account": acct, "amount": amount,
-                                               "nonce": self._nonce(acct), "timestamp": self._tick(dt),
+                                               "nonce": self._nonce(1), "timestamp": self._tick(dt),
                                                "beneficiary_bank": dest.split(":")[0],
                                                "beneficiary_account": dest.split(":")[-1]})
 
@@ -85,11 +88,16 @@ class DemoEngine:
             v, r, seq, tok = self.chip.process(rec, tag)
             miss = client != self.cached_client
             self.cached_client = client
-            cycles = (750 if miss else 411) - (4 if r & G.R_INTEGRITY else 0)
+            if r & (G.R_INTEGRITY | G.R_DOMAIN):
+                cycles = 746 if miss else 407          # ditolak sebelum indeks sketch
+            else:
+                cycles = 820 if miss else 481
             name = G.VERDICT_NAME[v]
             action = ACTION[name]
             if name == "REJECT" and r & G.R_REPLAY:
                 action = "Ditolak: replay rekaman lama"
+            elif name == "REJECT" and r & G.R_CLIENT:
+                action = "Ditolak: id klien tidak terdaftar (di luar 0..15)"
             elif name == "REJECT" and r & G.R_INTEGRITY:
                 action = "Ditolak: rekaman diubah setelah ditandatangani"
             row = dict(meta, verdict=name, reasons=G.reasons_str(r), seq=seq, token=tok.hex(), cycles=cycles,
@@ -113,7 +121,7 @@ class DemoEngine:
             acct = 77219 + len(self.rows)
             amt = 15_000_000
             rec, tag = self.gw.parse_crypto_deposit({"exchange_id": 2, "kyc_user_id": acct, "amount_idr": amt,
-                                                     "nonce": self._nonce(acct), "timestamp": self._tick(7),
+                                                     "nonce": self._nonce(2), "timestamp": self._tick(7),
                                                      "destination_wallet": "hot-wallet-bursa"})
             out.append(self._submit(rec, tag, {"channel": "Bursa kripto", "account": acct, "amount": amt,
                                                "dest": "Hot wallet bursa", "label": "Deposit kripto sah"}))
@@ -257,7 +265,7 @@ a.dl{color:var(--cyan);font-weight:600;text-decoration:none;border:1px solid var
 <div class="badges"><span class="badge b-mode">Mode: golden model (bit-exact RTL)</span><span class="badge b-ok" id="hw">LOCKED</span></div></div>
 
 <div class="stats">
-<div class="st"><h3>Transaksi diproses</h3><div class="v" id="sTotal">0</div><div class="s">411 / 750 cycle @ 50 MHz</div></div>
+<div class="st"><h3>Transaksi diproses</h3><div class="v" id="sTotal">0</div><div class="s">481 / 820 cycle @ 50 MHz</div></div>
 <div class="st"><h3>ACCEPT</h3><div class="v" style="color:#34D399" id="sA">0</div><div class="s">dieksekusi</div></div>
 <div class="st"><h3>FLAG</h3><div class="v" style="color:#FCD34D" id="sF">0</div><div class="s">kandidat LTKM</div></div>
 <div class="st"><h3>ESCALATE</h3><div class="v" style="color:#FDBA74" id="sE">0</div><div class="s">ditunda untuk ditinjau</div></div>

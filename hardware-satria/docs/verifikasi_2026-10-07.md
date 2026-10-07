@@ -1,31 +1,55 @@
-# Verifikasi revisi hierarki kunci dan watermark
+# Verifikasi SATRIA-CHIP — 7 Oktober 2026 (revisi Count-Min Sketch)
 
-RTL yang diuji: commit `3b177f9dcda9afdd087bf6da3475eb0abaf32dbb`.
+## Mengapa desain diubah
+
+Uji serangan tambahan pada desain sebelumnya (Account State Memory 64 slot
+direct-mapped, indeks = 6 bit bawah ID rekening) menemukan dua kelemahan:
+
+1. **Velocity dapat diakali.** Dua rekening yang jatuh di slot yang sama dan
+   bertransaksi bergantian saling menggusur, sehingga hitungan velocity selalu
+   kembali ke 1. Uji: 40 transaksi Rp9 juta dalam 40 detik (batas 5/60 detik)
+   menghasilkan **0 FLAG**.
+2. **Transaksi sah ditolak sebagai REPLAY.** Watermark per slot menolak rekening
+   baru bila jam sistem sumber berselisih beberapa detik.
+
+## Perubahan desain
+
+| Bagian | Sebelum | Sesudah |
+|---|---|---|
+| Velocity | Tabel 64 slot, akun lama tergusur (fail-open) | Count-Min Sketch 4 × 4.096 penghitung di M10K; perkiraan = min antar baris dari (hitungan epoch kini + epoch sebelumnya); tidak pernah menghitung kurang (fail-safe) |
+| Indeks | 6 bit bawah ID rekening (dapat dipilih pelaku) | 4 × 12 bit dari `Compress(st_Kidx, akun)`; `K_idx = HMAC(K_master, "PERURI-INDEX-KEY-v1")` diturunkan saat LOCK, tidak pernah keluar chip |
+| Jendela | 60 detik, jendela tetap per akun | 2^`CFG_WIN_SHIFT` detik (default 64), dua epoch |
+| Anti-replay | Nonce per rekening + watermark per slot | Nonce = nomor urut per klien; tabel 16 klien (id 0–15) dengan jendela geser 64 (gaya IPsec); id di luar 0–15 → `REJECT CLIENT` |
+| Reset | — | Sketch disapu bersih 4.096 cycle setelah reset (`STATUS` bit 4) |
+| Rule engine | 3 cycle | 4 cycle (pipeline: latch, tahap A, tahap B, keputusan) |
+
+## Hasil
 
 | Pemeriksaan | Hasil | Bukti |
 |---|---|---|
-| Core RTL | 13/13 lulus (12 skenario + laporan) | `log_simulasi_core.txt`, `hasil_simulasi.md` |
+| Core RTL | 16/16 lulus (15 skenario + laporan) | `log_simulasi_core.txt`, `hasil_simulasi.md` |
+| Serangan 2 rekening bergantian | transaksi ke-6 dst. tiap rekening FLAG (10 dari 20) | `t12_collision_cannot_evade_velocity` |
+| Rekening target di antara 300 rekening lain | transaksi ke-6 dst. FLAG | `t13_many_accounts_never_undercount` |
+| Selisih jam sumber / nonce terlambat | ACCEPT; replay & nonce di luar jendela REJECT | `t14_replay_window_and_clock_skew` |
+| Id klien di luar 0–15 | REJECT CLIENT, klien terdaftar tetap jalan | `t15_client_out_of_range_fail_closed` |
+| Regresi acak | 10.000/10.000 bit-exact (seed 20261007, 2.000 rekening, batas velocity 2/64 dtk agar jalur FLAG teruji: 117 FLAG) | `log_regresi_random_10000.txt`, `hasil_regresi_acak.md` |
 | UART end-to-end | 1/1 lulus | `log_simulasi_uart.txt` |
-| Waveform cache hit | 1/1 lulus; ACCEPT, 411 cycle | `log_simulasi_wave.txt`, `fig/timing_transaksi.png` |
-| Regresi 10.000 transaksi | 10.000/10.000 lulus bit-exact (seed 20261007, 200 akun / 64 slot, 5 klien) | `docs/log_regresi_random_10000.txt` |
-| Quartus fitter | 4.346 ALM, 8.568 register, 15 M10K, 0 DSP | `quartus/screener.fit.summary` |
-| Timing @50 MHz | Fmax worst-case 75,04 MHz; setup +6,673 ns, hold +0,107 ns minimum | `quartus/screener.sta.rpt`, `quartus/screener.sta.summary` |
-| Power Analyzer | Successful; 493,84 mW total, confidence Low | `quartus/screener.pow.rpt`, `quartus/screener.pow.summary` |
+| Waveform cache hit | ACCEPT, 481 cycle | `log_simulasi_wave.txt`, `fig/timing_transaksi.png` |
+| Bukti formal isolasi kunci (Yosys) | lulus; 9 register rahasia (termasuk `idx_ipad`), 4 kontrol negatif terdeteksi | `log_formal.txt` |
+| Quartus fitter | 6.037 ALM (14%), 11.364 register, 104 M10K (19%), 864.768 bit (15%), 0 DSP | `quartus/screener.fit.summary` |
+| Timing @50 MHz | Fmax worst-case 77,38 MHz (Slow −40 °C); setup +7,077 ns, hold +0,121 ns minimum | `quartus/screener.sta.rpt` |
+| Power Analyzer | 553,27 mW (dinamis 126,67; statis 414,31; I/O 12,29), vectorless, confidence Low | `quartus/screener.pow.rpt` |
 
-Latensi sah terukur: cache hit 411 cycle / cache miss 750 cycle. Penolakan integrity: 407 / 746 cycle. Pada 50 MHz, kapasitas core sah sekitar 121.654 / 66.667 transaksi/detik sebelum biaya transfer I/O; pola pergantian klien menentukan tingkat cache miss.
+Latensi: cache hit 481 cycle (9,62 µs) / cache miss 820 cycle (16,40 µs);
+penolakan integritas 407 / 746 cycle. Kapasitas core ±103.950 / 60.976
+transaksi/detik sebelum biaya I/O.
 
-Power Analyzer dijalankan pada database fitted yang tersedia dengan `quartus_pow screener -c screener`, Quartus Prime Lite 24.1. Analisis vectorless, clock 50 MHz, default toggle 12,5%, ambient 25 °C, tanpa model termal board dan tanpa aktivitas HPS. Estimasi dinamis 68,61 mW, statis 412,95 mW, I/O 12,29 mW; komponen dibulatkan sehingga jumlahnya dapat berbeda 0,01 mW dari total. VCD dan pengukuran fisik board diperlukan untuk validasi aktivitas serta konsumsi aktual.
+Catatan: kompilasi pertama dengan rule engine 3 cycle hanya mencapai Fmax
+46,57 MHz (gagal 50 MHz). Rule engine kemudian dipipeline menjadi 4 cycle dan
+kompilasi ulang lulus timing dengan margin. Jalur kritis sekarang berada di
+logika zeroize key vault (12 ns), bukan di rule engine.
 
-Pemeriksaan Yosys di `formal/` menelusuri fan-in `readdata` dengan batas hierarki `hmac_engine`; pemeriksaan ini tidak membuktikan ketahanan terhadap side-channel atau aliran rahasia melalui keluaran MAC yang memang diizinkan. Skrip dan tiga kontrol negatif tersedia; tidak dijalankan ulang dalam pembaruan dokumen ini.
-
-Proposal dibangun dari sumber DOCX yang dipertahankan di `docs/proposal/`; diagram arsitektur diperbarui, dan PDF diekspor melalui Microsoft Word. LibreOffice tidak tersedia pada mesin ini. QA visual dilakukan terhadap hasil ekspor PDF, satu PNG per halaman.
-
-## Eksekusi ulang 7 Oktober 2026 (Linux, Icarus Verilog 12.0 stable + cocotb 2.1.0)
-
-| Tes | Hasil | Log |
-|---|---|---|
-| Core (`python tb/run.py core`) | 13/13 lulus (12 skenario + laporan) | `docs/log_simulasi_core_ulang.txt` |
-| UART end-to-end (`python tb/run.py uart`) | 1/1 lulus | `docs/log_simulasi_uart_ulang.txt` |
-| Regresi acak (`RANDOM_N=10000 python tb/run.py random`) | 10.000/10.000 bit-exact, 0 gagal, 990 s waktu nyata | `docs/log_regresi_random_10000.txt` |
-
-Komposisi regresi: 5.550 sah (ACCEPT), 1.229 replay (REJECT), 792 bit-flip (REJECT), 790 nominal besar (ESCALATE), 494 tag salah (REJECT), 475 kunci klien lain (REJECT), 670 jam mundur (665 ACCEPT, 5 REJECT). Setiap vonis dan token dibandingkan bit-exact dengan golden model.
+Simulator: Icarus Verilog 14.0 (devel, OSS CAD Suite 2026-10-01) + cocotb 2.1.
+Pesan `Simulation failed: -11` di akhir log regresi muncul saat simulator
+ditutup, setelah `TESTS=1 PASS=1 FAIL=0` tercetak; seluruh 10.000 transaksi
+sudah diperiksa sebelum itu.
