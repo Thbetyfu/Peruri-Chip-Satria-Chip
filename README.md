@@ -92,4 +92,4 @@ Skenario yang sama di board DE10-Nano (lewat adaptor USB-UART): `python hardware
 
 ---
 
-Lisensi: `sha256_round` diturunkan dari TT07 *tiny sha256* (Apache-2.0, lihat `hardware-satria/rtl/LICENSE-TT07-sha256-Apache-2.0`).
+Lisensi: Apache License 2.0 (lihat `LICENSE` dan `NOTICE`). Hak cipta © 2026 Tim Paket Kulit 12k. `sha256_round` diturunkan dari TT07 *tiny sha256* (Apache-2.0).

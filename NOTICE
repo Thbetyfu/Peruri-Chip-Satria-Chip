@@ -1,0 +1,10 @@
+SATRIA-CHIP
+Copyright 2026 Tim Paket Kulit 12k, Telkom University
+
+Dilisensikan di bawah Apache License, Version 2.0 (lihat berkas LICENSE).
+
+Proyek ini memuat karya turunan dari:
+  Tiny Tapeout 7 "tiny sha256" (tt_um_xeniarose_sha256)
+  https://github.com/xeniarose/tt07-sha256
+  Apache License 2.0 - lihat hardware-satria/rtl/LICENSE-TT07-sha256-Apache-2.0
+  (dipakai sebagai dasar hardware-satria/rtl/sha256_round.v)
