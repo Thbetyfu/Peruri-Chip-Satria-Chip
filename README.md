@@ -85,7 +85,7 @@ Skenario yang sama di board DE10-Nano (lewat adaptor USB-UART): `python hardware
 ## Spesifikasi hardware (Cyclone V 5CSEBA6U23I7, Quartus Prime Lite 24.1)
 
 * Clock 50 MHz; Fmax **75,04 MHz** (setup slack +6,67 ns)
-* Latensi **411 cycle (8,22 µs)** cache hit / **750 cycle (15,00 µs)** cache miss; kapasitas core ±121.654 transaksi/detik
+* Latensi **411 cycle (8,22 µs)** cache hit / **750 cycle (15,00 µs)** cache miss; kapasitas core ±121.654 transaksi/detik (sebelum biaya I/O; demo lewat UART 115200 baud dibatasi link serial, ±20–40 transaksi/detik)
 * **4.346 ALM (10%)**, 8.568 register, **15 M10K (±3%)**, **0 DSP**
 * Estimasi daya **493,84 mW** @ 50 MHz (Power Analyzer, vectorless)
 * 13/13 tes core lulus (12 skenario + laporan); regresi acak 10.000/10.000 transaksi bit-exact (log: `hardware-satria/docs/log_regresi_random_10000.txt`); 0 kebocoran kunci pada sapuan 256 alamat bus

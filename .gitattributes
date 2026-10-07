@@ -1,0 +1,3 @@
+# Skrip shell dan Yosys harus LF agar dapat dijalankan di Linux
+*.sh text eol=lf
+*.ys text eol=lf
