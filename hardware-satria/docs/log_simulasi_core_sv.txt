@@ -1,0 +1,161 @@
+     -.--ns INFO     gpi                                ../gpi/GpiCommon.cpp:216  in gpi_load_users                  Running entry func 'initialize' from loaded library '/home/claude/oss-cad-suite/lib/python3.11/site-packages/cocotb-2.1.0.dev0+41564633-py3.11-linux-x64.egg/cocotb/libs/libcocotb.so'
+     -.--ns INFO     gpi                                ..mbed/gpi_embed.cpp:96   in initialize                      Using Python 3.11.6 interpreter at /home/claude/oss-cad-suite/bin/tabbypy3
+     0.00ns INFO     cocotb                             Running on Icarus Verilog version 14.0 (devel)
+     0.00ns INFO     cocotb                             Seeding Python random module with 1791384202
+     0.00ns INFO     cocotb                             Initialized cocotb v2.1.0.dev0+41564633 from /home/claude/oss-cad-suite/lib/python3.11/site-packages/cocotb-2.1.0.dev0+41564633-py3.11-linux-x64.egg/cocotb
+     0.00ns INFO     cocotb                             Running tests
+     0.00ns INFO     cocotb.regression                  running test_screener.t01_valid_transaction_hmac_matches_golden (1/16)
+                                                            Transaksi sah -> ACCEPT; token bit-exact dengan golden model; ukur cycle.
+ 99910.00ns INFO     cocotb.screener_top                transaksi sah (klien baru: turunkan kunci) -> ACCEPT   reasons=-                  seq=0 cycles=820
+110990.00ns INFO     cocotb.screener_top                transaksi sah                            -> ACCEPT   reasons=-                  seq=1 cycles=481
+110990.00ns INFO     cocotb.regression                  test_screener.t01_valid_transaction_hmac_matches_golden passed
+110990.00ns INFO     cocotb.regression                  running test_screener.t02_bitflip_rejected_by_integrity_gate (2/16)
+                                                            Satu bit diubah (rekaman atau tag) -> REJECT INTEGRITY, tidak mencapai rule engine.
+209420.00ns INFO     cocotb.screener_top                bit-flip rekaman bit 255                 -> REJECT   reasons=INTEGRITY          seq=0 cycles=746
+219020.00ns INFO     cocotb.screener_top                bit-flip rekaman bit 300                 -> REJECT   reasons=INTEGRITY          seq=1 cycles=407
+228620.00ns INFO     cocotb.screener_top                bit-flip rekaman bit 511                 -> REJECT   reasons=INTEGRITY          seq=2 cycles=407
+238220.00ns INFO     cocotb.screener_top                bit-flip rekaman bit 76                  -> REJECT   reasons=INTEGRITY          seq=3 cycles=407
+247820.00ns INFO     cocotb.screener_top                bit-flip rekaman bit 299                 -> REJECT   reasons=INTEGRITY          seq=4 cycles=407
+257420.00ns INFO     cocotb.screener_top                bit-flip rekaman bit 441                 -> REJECT   reasons=INTEGRITY          seq=5 cycles=407
+267020.00ns INFO     cocotb.screener_top                bit-flip rekaman bit 418                 -> REJECT   reasons=INTEGRITY          seq=6 cycles=407
+276620.00ns INFO     cocotb.screener_top                bit-flip pada tag                        -> REJECT   reasons=INTEGRITY          seq=7 cycles=407
+287700.00ns INFO     cocotb.screener_top                transaksi asli setelah serangan          -> ACCEPT   reasons=-                  seq=8 cycles=481
+287700.00ns INFO     cocotb.regression                  test_screener.t02_bitflip_rejected_by_integrity_gate passed
+287700.00ns INFO     cocotb.regression                  running test_screener.t03_domain_separation (3/16)
+                                                            Verdict token yang sah tidak bisa dipakai ulang sebagai transaksi.
+387610.00ns INFO     cocotb.screener_top                transaksi sah                            -> ACCEPT   reasons=-                  seq=0 cycles=820
+404010.00ns INFO     cocotb.screener_top                token disubmit sebagai transaksi         -> REJECT   reasons=INTEGRITY|DOMAIN   seq=1 cycles=746
+404010.00ns INFO     cocotb.regression                  test_screener.t03_domain_separation passed
+404010.00ns INFO     cocotb.regression                  running test_screener.t04_replay_rejected (4/16)
+                                                            Nonce = nomor urut per klien; replay & nonce yang sudah dipakai ditolak.
+503920.00ns INFO     cocotb.screener_top                transaksi nonce 10                       -> ACCEPT   reasons=-                  seq=0 cycles=820
+515000.00ns INFO     cocotb.screener_top                replay transaksi yang sama               -> REJECT   reasons=REPLAY             seq=1 cycles=481
+526080.00ns INFO     cocotb.screener_top                nonce 9 terlambat, belum dipakai         -> ACCEPT   reasons=-                  seq=2 cycles=481
+537160.00ns INFO     cocotb.screener_top                replay nonce 9                           -> REJECT   reasons=REPLAY             seq=3 cycles=481
+548240.00ns INFO     cocotb.screener_top                nonce baru (11)                          -> ACCEPT   reasons=-                  seq=4 cycles=481
+548240.00ns INFO     cocotb.regression                  test_screener.t04_replay_rejected passed
+548240.00ns INFO     cocotb.regression                  running test_screener.t05_velocity_and_amount (5/16)
+648150.00ns INFO     cocotb.screener_top                lonjakan akun #1 dlm 64 dtk              -> ACCEPT   reasons=-                  seq=0 cycles=820
+659230.00ns INFO     cocotb.screener_top                lonjakan akun #2 dlm 64 dtk              -> ACCEPT   reasons=-                  seq=1 cycles=481
+670310.00ns INFO     cocotb.screener_top                lonjakan akun #3 dlm 64 dtk              -> ACCEPT   reasons=-                  seq=2 cycles=481
+681390.00ns INFO     cocotb.screener_top                lonjakan akun #4 dlm 64 dtk              -> ACCEPT   reasons=-                  seq=3 cycles=481
+692470.00ns INFO     cocotb.screener_top                lonjakan akun #5 dlm 64 dtk              -> ACCEPT   reasons=-                  seq=4 cycles=481
+703550.00ns INFO     cocotb.screener_top                lonjakan akun #6 dlm 64 dtk              -> FLAG     reasons=VELOCITY           seq=5 cycles=481
+714630.00ns INFO     cocotb.screener_top                lonjakan akun #7 dlm 64 dtk              -> FLAG     reasons=VELOCITY           seq=6 cycles=481
+725710.00ns INFO     cocotb.screener_top                setelah jendela waktu lewat              -> ACCEPT   reasons=-                  seq=7 cycles=481
+736790.00ns INFO     cocotb.screener_top                nominal di atas batas                    -> ESCALATE reasons=AMOUNT             seq=8 cycles=481
+736790.00ns INFO     cocotb.regression                  test_screener.t05_velocity_and_amount passed
+736790.00ns INFO     cocotb.regression                  running test_screener.t06_audit_log_hash_chain (6/16)
+                                                            Log on-chip membentuk rantai; ubah/hapus/tukar entri terdeteksi verifikator.
+836700.01ns INFO     cocotb.screener_top                log #0                                   -> ESCALATE reasons=AMOUNT             seq=0 cycles=820
+847780.01ns INFO     cocotb.screener_top                log #1                                   -> ACCEPT   reasons=-                  seq=1 cycles=481
+858860.01ns INFO     cocotb.screener_top                log #2                                   -> ESCALATE reasons=AMOUNT             seq=2 cycles=481
+869940.01ns INFO     cocotb.screener_top                log #3                                   -> ACCEPT   reasons=-                  seq=3 cycles=481
+879540.01ns INFO     cocotb.screener_top                log #4                                   -> REJECT   reasons=INTEGRITY          seq=4 cycles=407
+890620.01ns INFO     cocotb.screener_top                log #5                                   -> ACCEPT   reasons=-                  seq=5 cycles=481
+901700.01ns INFO     cocotb.screener_top                log #6                                   -> ESCALATE reasons=AMOUNT             seq=6 cycles=481
+912780.01ns INFO     cocotb.screener_top                log #7                                   -> ACCEPT   reasons=-                  seq=7 cycles=481
+923860.01ns INFO     cocotb.screener_top                log #8                                   -> ACCEPT   reasons=-                  seq=8 cycles=481
+934940.01ns INFO     cocotb.screener_top                log #9                                   -> ACCEPT   reasons=-                  seq=9 cycles=481
+940100.01ns INFO     cocotb.screener_top                log asli           : rantai utuh (10 entri)
+940100.01ns INFO     cocotb.screener_top                entri #4 diubah    : rantai putus pada seq 4
+940100.01ns INFO     cocotb.screener_top                entri #6 dihapus   : celah/urutan seq: harap 6, dapat 7
+940100.01ns INFO     cocotb.screener_top                entri ditukar      : rantai putus pada seq 2
+940100.01ns INFO     cocotb.regression                  test_screener.t06_audit_log_hash_chain passed
+940100.01ns INFO     cocotb.regression                  running test_screener.t07_key_never_readable (7/16)
+                                                            Sapu seluruh 256 alamat: tidak ada word kunci/ipad/opad yang terbaca.
+1040010.01ns INFO     cocotb.screener_top                isi cache kunci klien                    -> ACCEPT   reasons=-                  seq=0 cycles=820
+1049930.01ns INFO     cocotb.regression                  test_screener.t07_key_never_readable passed
+1049930.01ns INFO     cocotb.regression                  running test_screener.t08_rewrite_key_triggers_zeroize (8/16)
+                                                            Host terkompromi mencoba mengganti kunci -> TAMPER, zeroize, fail-closed.
+1149840.01ns INFO     cocotb.screener_top                sebelum serangan                         -> ACCEPT   reasons=-                  seq=0 cycles=820
+1152880.01ns INFO     cocotb.regression                  test_screener.t08_rewrite_key_triggers_zeroize passed
+1152880.01ns INFO     cocotb.regression                  running test_screener.t09_policy_locked_and_tamper_pin (9/16)
+1317200.01ns INFO     cocotb.regression                  test_screener.t09_policy_locked_and_tamper_pin passed
+1317200.01ns INFO     cocotb.regression                  running test_screener.t10_unprovisioned_fail_closed (10/16)
+1318790.01ns INFO     cocotb.regression                  test_screener.t10_unprovisioned_fail_closed passed
+1318790.01ns INFO     cocotb.regression                  running test_screener.t11_per_client_key_isolation (11/16)
+                                                            Kunci klien diturunkan di chip: kunci klien A tidak bisa dipakai atas nama klien B.
+1418700.01ns INFO     cocotb.screener_top                klien A dengan kunci A                   -> ACCEPT   reasons=-                  seq=0 cycles=820
+1435100.01ns INFO     cocotb.screener_top                klien B ditandatangani kunci A (bocor)   -> REJECT   reasons=INTEGRITY          seq=1 cycles=746
+1446180.01ns INFO     cocotb.screener_top                klien B dengan kunci B                   -> ACCEPT   reasons=-                  seq=2 cycles=481
+1455780.01ns INFO     cocotb.screener_top                id klien diganti host                    -> REJECT   reasons=INTEGRITY          seq=3 cycles=407
+1472180.01ns INFO     cocotb.screener_top                tag dengan kunci master langsung         -> REJECT   reasons=INTEGRITY          seq=4 cycles=746
+1472180.01ns INFO     cocotb.regression                  test_screener.t11_per_client_key_isolation passed
+1472180.01ns INFO     cocotb.regression                  running test_screener.t12_collision_cannot_evade_velocity (12/16)
+                                                            Serangan lama (2 rekening bergantian di slot yang sama) kini tetap FLAG.
+1572090.01ns INFO     cocotb.screener_top                bergantian 0x1000 #1                     -> ACCEPT   reasons=-                  seq=0 cycles=820
+1583170.01ns INFO     cocotb.screener_top                bergantian 0x1040 #1                     -> ACCEPT   reasons=-                  seq=1 cycles=481
+1594250.01ns INFO     cocotb.screener_top                bergantian 0x1000 #2                     -> ACCEPT   reasons=-                  seq=2 cycles=481
+1605330.01ns INFO     cocotb.screener_top                bergantian 0x1040 #2                     -> ACCEPT   reasons=-                  seq=3 cycles=481
+1616410.01ns INFO     cocotb.screener_top                bergantian 0x1000 #3                     -> ACCEPT   reasons=-                  seq=4 cycles=481
+1627490.01ns INFO     cocotb.screener_top                bergantian 0x1040 #3                     -> ACCEPT   reasons=-                  seq=5 cycles=481
+1638570.01ns INFO     cocotb.screener_top                bergantian 0x1000 #4                     -> ACCEPT   reasons=-                  seq=6 cycles=481
+1649650.01ns INFO     cocotb.screener_top                bergantian 0x1040 #4                     -> ACCEPT   reasons=-                  seq=7 cycles=481
+1660730.01ns INFO     cocotb.screener_top                bergantian 0x1000 #5                     -> ACCEPT   reasons=-                  seq=8 cycles=481
+1671810.01ns INFO     cocotb.screener_top                bergantian 0x1040 #5                     -> ACCEPT   reasons=-                  seq=9 cycles=481
+1682890.01ns INFO     cocotb.screener_top                bergantian 0x1000 #6                     -> FLAG     reasons=VELOCITY           seq=10 cycles=481
+1693970.01ns INFO     cocotb.screener_top                bergantian 0x1040 #6                     -> FLAG     reasons=VELOCITY           seq=11 cycles=481
+1705050.01ns INFO     cocotb.screener_top                bergantian 0x1000 #7                     -> FLAG     reasons=VELOCITY           seq=12 cycles=481
+1716130.01ns INFO     cocotb.screener_top                bergantian 0x1040 #7                     -> FLAG     reasons=VELOCITY           seq=13 cycles=481
+1727210.01ns INFO     cocotb.screener_top                bergantian 0x1000 #8                     -> FLAG     reasons=VELOCITY           seq=14 cycles=481
+1738290.01ns INFO     cocotb.screener_top                bergantian 0x1040 #8                     -> FLAG     reasons=VELOCITY           seq=15 cycles=481
+1749370.01ns INFO     cocotb.screener_top                bergantian 0x1000 #9                     -> FLAG     reasons=VELOCITY           seq=16 cycles=481
+1760450.01ns INFO     cocotb.screener_top                bergantian 0x1040 #9                     -> FLAG     reasons=VELOCITY           seq=17 cycles=481
+1771530.01ns INFO     cocotb.screener_top                bergantian 0x1000 #10                    -> FLAG     reasons=VELOCITY           seq=18 cycles=481
+1782610.01ns INFO     cocotb.screener_top                bergantian 0x1040 #10                    -> FLAG     reasons=VELOCITY           seq=19 cycles=481
+1782610.01ns INFO     cocotb.regression                  test_screener.t12_collision_cannot_evade_velocity passed
+1782610.01ns INFO     cocotb.regression                  running test_screener.t13_many_accounts_never_undercount (13/16)
+                                                            300 rekening lain lalu-lalang; rekening target tetap FLAG mulai transaksi ke-6.
+1882520.01ns INFO     cocotb.screener_top                target #1 di tengah 300 rekening         -> ACCEPT   reasons=-                  seq=0 cycles=820
+2325720.01ns INFO     cocotb.screener_top                target #2 di tengah 300 rekening         -> ACCEPT   reasons=-                  seq=40 cycles=481
+2768920.01ns INFO     cocotb.screener_top                target #3 di tengah 300 rekening         -> ACCEPT   reasons=-                  seq=80 cycles=481
+3212120.01ns INFO     cocotb.screener_top                target #4 di tengah 300 rekening         -> ACCEPT   reasons=-                  seq=120 cycles=481
+3655320.01ns INFO     cocotb.screener_top                target #5 di tengah 300 rekening         -> ACCEPT   reasons=-                  seq=160 cycles=481
+4098520.01ns INFO     cocotb.screener_top                target #6 di tengah 300 rekening         -> FLAG     reasons=VELOCITY           seq=200 cycles=481
+4541720.01ns INFO     cocotb.screener_top                target #7 di tengah 300 rekening         -> FLAG     reasons=VELOCITY           seq=240 cycles=481
+4984920.01ns INFO     cocotb.screener_top                target #8 di tengah 300 rekening         -> FLAG     reasons=VELOCITY           seq=280 cycles=481
+5417040.01ns INFO     cocotb.regression                  test_screener.t13_many_accounts_never_undercount passed
+5417040.01ns INFO     cocotb.regression                  running test_screener.t14_replay_window_and_clock_skew (14/16)
+                                                            Jendela anti-replay 64 per klien; selisih jam sumber tidak lagi menolak transaksi sah.
+5516950.01ns INFO     cocotb.screener_top                rek A ts=5000                            -> ACCEPT   reasons=-                  seq=0 cycles=820
+5528030.01ns INFO     cocotb.screener_top                rek B nonce 12                           -> ACCEPT   reasons=-                  seq=1 cycles=481
+5545910.01ns INFO     cocotb.screener_top                rek C BARU, klien lain, jam mundur 2 dtk -> ACCEPT   reasons=-                  seq=2 cycles=820
+5563790.01ns INFO     cocotb.screener_top                nonce 11 datang terlambat (masih di jendela) -> ACCEPT   reasons=-                  seq=3 cycles=820
+5574870.01ns INFO     cocotb.screener_top                nonce 11 diputar ulang                   -> REJECT   reasons=REPLAY             seq=4 cycles=481
+5585950.01ns INFO     cocotb.screener_top                nonce melompat ke 100                    -> ACCEPT   reasons=-                  seq=5 cycles=481
+5597030.01ns INFO     cocotb.screener_top                nonce 36 (di luar jendela 64)            -> REJECT   reasons=REPLAY             seq=6 cycles=481
+5608110.01ns INFO     cocotb.screener_top                nonce 37 (tepi jendela, belum dipakai)   -> ACCEPT   reasons=-                  seq=7 cycles=481
+5608110.01ns INFO     cocotb.regression                  test_screener.t14_replay_window_and_clock_skew passed
+5608110.01ns INFO     cocotb.regression                  running test_screener.t15_client_out_of_range_fail_closed (15/16)
+                                                            Id klien di luar 0..15 ditolak; tidak dapat merebut slot klien terdaftar.
+5708020.01ns INFO     cocotb.screener_top                klien 0x01 (slot 1)                      -> ACCEPT   reasons=-                  seq=0 cycles=820
+5725900.01ns INFO     cocotb.screener_top                klien 0x11 (di luar 0..15)               -> REJECT   reasons=CLIENT             seq=1 cycles=820
+5743780.01ns INFO     cocotb.screener_top                klien 0x01 tetap berjalan                -> ACCEPT   reasons=-                  seq=2 cycles=820
+5743780.01ns INFO     cocotb.regression                  test_screener.t15_client_out_of_range_fail_closed passed
+5743780.01ns INFO     cocotb.regression                  running test_screener.t99_report (16/16)
+                                                            Tulis ringkasan hasil ke build/results.md.
+5743780.01ns INFO     cocotb.screener_top                laporan ditulis ke /home/claude/peruri-chip-satria-chip/hardware-satria/tb/../build/results.md
+5743780.01ns INFO     cocotb.regression                  test_screener.t99_report passed
+5743780.01ns INFO     cocotb.regression                  *****************************************************************************************************************
+                                                        ** TEST                                                     STATUS  SIM TIME (ns)  REAL TIME (s)  RATIO (ns/s) **
+                                                        *****************************************************************************************************************
+                                                        ** test_screener.t01_valid_transaction_hmac_matches_golden   PASS      110990.00           0.47     237474.88  **
+                                                        ** test_screener.t02_bitflip_rejected_by_integrity_gate      PASS      176710.00           0.78     226004.65  **
+                                                        ** test_screener.t03_domain_separation                       PASS      116310.00           0.45     259972.12  **
+                                                        ** test_screener.t04_replay_rejected                         PASS      144230.00           0.59     244572.11  **
+                                                        ** test_screener.t05_velocity_and_amount                     PASS      188550.00           0.83     228303.63  **
+                                                        ** test_screener.t06_audit_log_hash_chain                    PASS      203310.00           0.87     234466.00  **
+                                                        ** test_screener.t07_key_never_readable                      PASS      109830.00           0.40     272082.33  **
+                                                        ** test_screener.t08_rewrite_key_triggers_zeroize            PASS      102950.00           0.37     275012.59  **
+                                                        ** test_screener.t09_policy_locked_and_tamper_pin            PASS      164320.00           0.64     257840.83  **
+                                                        ** test_screener.t10_unprovisioned_fail_closed               PASS        1590.00           0.01     293721.35  **
+                                                        ** test_screener.t11_per_client_key_isolation                PASS      153390.00           0.65     235821.70  **
+                                                        ** test_screener.t12_collision_cannot_evade_velocity         PASS      310430.00           1.45     214675.14  **
+                                                        ** test_screener.t13_many_accounts_never_undercount          PASS     3634430.00          18.55     195885.06  **
+                                                        ** test_screener.t14_replay_window_and_clock_skew            PASS      191070.00           0.82     232426.17  **
+                                                        ** test_screener.t15_client_out_of_range_fail_closed         PASS      135670.00           0.55     247411.59  **
+                                                        ** test_screener.t99_report                                  PASS           0.00           0.00          0.00  **
+                                                        *****************************************************************************************************************
+                                                        ** TESTS=16 PASS=16 FAIL=0 SKIP=0                                     5743780.01          27.44     209307.36  **
+                                                        *****************************************************************************************************************

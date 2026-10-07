@@ -1,0 +1,145 @@
+// SPDX-License-Identifier: LicenseRef-Proprietary
+// SPDX-FileCopyrightText: Copyright (c) 2026 Tim Paket Kulit 12k, Telkom University. All rights reserved.
+// key_vault.v - penyimpanan kunci master write-once, hierarki kunci, zeroize.
+//
+// Hierarki kunci (semua diturunkan DI DALAM chip):
+//   K_master  : diisi sekali saat provisioning, dihapus setelah LOCK
+//   K_tok     = HMAC(K_master, "PERURI-TOKEN-KEY-v1")      -> kunci verdict token
+//   K_client  = HMAC(K_master, "PERURI-CLIENT-KEY-v1"||id) -> kunci tiap klien
+//               (diturunkan per transaksi oleh screener_top, di-cache)
+//   K_idx     = HMAC(K_master, "PERURI-INDEX-KEY-v1")      -> kunci indeks sketch
+//               velocity; tidak pernah keluar chip sehingga pelaku tidak dapat
+//               memilih rekening yang bertabrakan di Count-Min Sketch
+// Backend cukup memegang K_tok untuk memverifikasi token/log, klien hanya
+// memegang K_client miliknya; tidak ada pihak luar yang memerlukan K_master.
+//
+// Siklus hidup:
+//   EMPTY   : kunci master dapat ditulis (provisioning di fasilitas aman)
+//   LOCKING : L0 precompute(K_master) -> L1 K_tok = HMAC(K_master, TOK)
+//             -> L2 precompute(K_tok) -> L3 K_idx = HMAC(K_master, IDX)
+//             -> L4 precompute(K_idx)                        (12 blok SHA-256)
+//   LOCKED  : hanya state turunan (ipad/opad master & token) yang tersimpan;
+//             kunci mentah dihapus
+//   TAMPER  : semua material kunci di-zeroize, chip fail-closed (semua REJECT)
+// Properti keamanan:
+//   * TIDAK ada port baca kunci / state turunan ke bus host
+//   * percobaan menulis kunci/kebijakan setelah LOCKED => TAMPER (zeroize)
+//   * pin tamper eksternal (aktif rendah) => TAMPER
+//   * TAMPER bersifat sticky sampai reset daya (prototipe; ASIC: permanen)
+// SystemVerilog (IEEE 1800-2017) — padanan fungsional rtl/key_vault.v; diverifikasi
+// dengan testbench & golden model yang sama (lihat docs/verifikasi_sv.md).
+
+`default_nettype none
+
+module key_vault (
+    input  logic         clk,
+    input  logic         rst_n,
+    // provisioning
+    input  logic         key_we,
+    input  logic [2:0]   key_idx,
+    input  logic [31:0]  key_wdata,
+    input  logic         lock_req,
+    input  logic         illegal_write,   // tulis ke area kebijakan setelah lock
+    input  logic         tamper_n,        // pin tamper eksternal, aktif rendah
+    // permintaan ke hmac_engine selama LOCKING
+    output logic          eng_start,
+    output logic          eng_mode,        // 1 = PRECOMP, 0 = MAC
+    output logic  [511:0] eng_msg,
+    input  logic         eng_done,
+    input  logic [255:0] eng_mac,
+    input  logic [255:0] eng_st_i,
+    input  logic [255:0] eng_st_o,
+    output logic         active,          // vault sedang memakai hmac_engine
+    // state turunan (hanya ke hmac_engine / screener_top, tidak ke bus)
+    output logic  [255:0] ipad_state,      // master
+    output logic  [255:0] opad_state,
+    output logic  [255:0] tok_ipad,        // kunci token
+    output logic  [255:0] tok_opad,
+    output logic  [255:0] idx_ipad,        // state kunci indeks sketch (K_idx)
+    // status
+    output logic          locked,
+    output logic          tamper,
+    output logic         ready
+);
+  localparam [511:0] MSG_TOK = {"PERURI-TOKEN-KEY-v1", 360'd0};
+  localparam [511:0] MSG_IDX = {"PERURI-INDEX-KEY-v1", 360'd0};
+
+  logic [255:0] key;
+  logic [2:0]   ph;        // 0 idle, 1 L0, 2 L1, 3 L2, 4 L3, 5 L4
+  logic         wait_eng;
+
+  assign active = (ph != 3'd0);
+  assign ready  = locked & ~tamper;
+
+  // sinkronisasi pin tamper (2 flop)
+  logic [1:0] tamper_sync;
+  always_ff @(posedge clk or negedge rst_n)
+    if (!rst_n) tamper_sync <= 2'b11;
+    else        tamper_sync <= {tamper_sync[0], tamper_n};
+  wire tamper_pin = ~tamper_sync[1];
+
+  wire tamper_event = tamper_pin
+                    | (key_we   & (locked | active))
+                    | (lock_req & (locked | active))
+                    | illegal_write;
+
+  always_ff @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+      key <= 256'd0; ipad_state <= 256'd0; opad_state <= 256'd0;
+      tok_ipad <= 256'd0; tok_opad <= 256'd0; idx_ipad <= 256'd0;
+      locked <= 1'b0; tamper <= 1'b0; ph <= 3'd0; wait_eng <= 1'b0;
+      eng_start <= 1'b0; eng_mode <= 1'b0; eng_msg <= 512'd0;
+    end else begin
+      eng_start <= 1'b0;
+      if (tamper || tamper_event) begin
+        // ZEROIZE
+        tamper <= 1'b1; locked <= 1'b0; ph <= 3'd0; wait_eng <= 1'b0;
+        key <= 256'd0; ipad_state <= 256'd0; opad_state <= 256'd0;
+        tok_ipad <= 256'd0; tok_opad <= 256'd0; idx_ipad <= 256'd0; eng_msg <= 512'd0;
+      end else begin
+        case (ph)
+          3'd0: if (!locked) begin
+            if (key_we) begin
+              case (key_idx)
+                3'd0: key[255:224] <= key_wdata; 3'd1: key[223:192] <= key_wdata;
+                3'd2: key[191:160] <= key_wdata; 3'd3: key[159:128] <= key_wdata;
+                3'd4: key[127:96]  <= key_wdata; 3'd5: key[95:64]   <= key_wdata;
+                3'd6: key[63:32]   <= key_wdata; default: key[31:0] <= key_wdata;
+              endcase
+            end else if (lock_req) begin
+              // L0: precompute K_master
+              ph <= 3'd1; eng_mode <= 1'b1; eng_msg <= {key, 256'd0};
+              eng_start <= 1'b1; wait_eng <= 1'b1;
+            end
+          end
+          3'd1: if (wait_eng && eng_done) begin
+            ipad_state <= eng_st_i; opad_state <= eng_st_o;
+            key <= 256'd0;                       // kunci mentah dihapus
+            // L1: K_tok = HMAC(K_master, MSG_TOK)  (state master dipakai engine)
+            ph <= 3'd2; eng_mode <= 1'b0; eng_msg <= MSG_TOK; eng_start <= 1'b1;
+          end
+          3'd2: if (wait_eng && eng_done) begin
+            // L2: precompute K_tok
+            ph <= 3'd3; eng_mode <= 1'b1; eng_msg <= {eng_mac, 256'd0}; eng_start <= 1'b1;
+          end
+          3'd3: if (wait_eng && eng_done) begin
+            tok_ipad <= eng_st_i; tok_opad <= eng_st_o;
+            // L3: K_idx = HMAC(K_master, MSG_IDX)
+            ph <= 3'd4; eng_mode <= 1'b0; eng_msg <= MSG_IDX; eng_start <= 1'b1;
+          end
+          3'd4: if (wait_eng && eng_done) begin
+            // L4: precompute K_idx (hanya state ipad yang disimpan)
+            ph <= 3'd5; eng_mode <= 1'b1; eng_msg <= {eng_mac, 256'd0}; eng_start <= 1'b1;
+          end
+          default: if (wait_eng && eng_done) begin
+            idx_ipad <= eng_st_i;
+            eng_msg <= 512'd0;                   // hapus salinan K_tok / K_idx
+            ph <= 3'd0; wait_eng <= 1'b0; locked <= 1'b1;
+          end
+        endcase
+      end
+    end
+  end
+endmodule
+
+`default_nettype wire
