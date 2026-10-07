@@ -1,0 +1,22 @@
+{
+  "name": "satria-chip-video-demo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Video demo 3 menit SATRIA-CHIP (PERURI Chip Hackathon 2026) dengan Remotion",
+  "scripts": {
+    "audio": "node scripts/gen-audio.mjs",
+    "studio": "remotion studio src/index.ts",
+    "render": "remotion render src/index.ts SatriaDemo out/satria-chip-demo.mp4 --codec h264 --crf 16",
+    "still": "remotion still src/index.ts SatriaDemo out/still.png --frame 2400"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.534",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "remotion": "4.0.534"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "typescript": "^5.6.0"
+  }
+}
