@@ -1,4 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: LicenseRef-Proprietary
+// SPDX-FileCopyrightText: Copyright (c) 2026 Tim Paket Kulit 12k, Telkom University. All rights reserved.
 // -----------------------------------------------------------------------------
 // sha256_core.v  -  Iterative SHA-256 compression engine (1 round / cycle)
 //

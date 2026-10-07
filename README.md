@@ -92,4 +92,4 @@ Skenario yang sama di board DE10-Nano (lewat adaptor USB-UART): `python hardware
 
 ---
 
-Lisensi: Apache License 2.0 (lihat `LICENSE` dan `NOTICE`). Hak cipta © 2026 Tim Paket Kulit 12k. `sha256_round` diturunkan dari TT07 *tiny sha256* (Apache-2.0).
+Lisensi: **Proprietary — All Rights Reserved** © 2026 Tim Paket Kulit 12k. Akses diberikan untuk penilaian PERURI Chip Hackathon 2026; penggunaan lain memerlukan izin tertulis (lihat `LICENSE`). Komponen turunan TT07 *tiny sha256* (`sha256_round.v`, `baseline/tt07_*`) tetap berlisensi Apache-2.0.

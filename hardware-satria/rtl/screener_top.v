@@ -1,4 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: LicenseRef-Proprietary
+// SPDX-FileCopyrightText: Copyright (c) 2026 Tim Paket Kulit 12k, Telkom University. All rights reserved.
 // screener_top.v - Integrity-Gated Transaction Screener (Secure Element Co-Processor)
 //
 // Antarmuka host: slave memory-mapped 32-bit gaya Avalon-MM (dapat langsung

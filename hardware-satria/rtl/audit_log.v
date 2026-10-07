@@ -1,4 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: LicenseRef-Proprietary
+// SPDX-FileCopyrightText: Copyright (c) 2026 Tim Paket Kulit 12k, Telkom University. All rights reserved.
 // audit_log.v - log keputusan tamper-evident (hash-chain) di memori on-chip.
 //
 // Setiap entri: {seq, verdict, reasons, token}. token = HMAC(K, ... || prev_token)

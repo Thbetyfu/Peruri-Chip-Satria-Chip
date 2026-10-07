@@ -1,4 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: LicenseRef-Proprietary
+// SPDX-FileCopyrightText: Copyright (c) 2026 Tim Paket Kulit 12k, Telkom University. All rights reserved.
 // rule_engine.v - Deterministic Rule Engine + Account State Memory
 //
 // Hanya dijalankan SETELAH Integrity Gate lolos, sehingga rekaman palsu tidak

@@ -1,4 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: LicenseRef-Proprietary
+// SPDX-FileCopyrightText: Copyright (c) 2026 Tim Paket Kulit 12k, Telkom University. All rights reserved.
 // hmac_engine.v - HMAC-SHA256 untuk pesan tetap 64 byte, dengan precompute.
 //
 // Mode PRECOMP (dipakai sekali saat provisioning):

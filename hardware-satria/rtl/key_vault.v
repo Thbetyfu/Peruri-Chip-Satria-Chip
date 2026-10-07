@@ -1,4 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: LicenseRef-Proprietary
+// SPDX-FileCopyrightText: Copyright (c) 2026 Tim Paket Kulit 12k, Telkom University. All rights reserved.
 // key_vault.v - penyimpanan kunci master write-once, hierarki kunci, zeroize.
 //
 // Hierarki kunci (semua diturunkan DI DALAM chip):

@@ -1,4 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: LicenseRef-Proprietary
+// SPDX-FileCopyrightText: Copyright (c) 2026 Tim Paket Kulit 12k, Telkom University. All rights reserved.
 // de10_nano_top.v - pembungkus board DE10-Nano (Cyclone V SoC 5CSEBA6U23I7).
 //   FPGA_CLK1_50 : clock 50 MHz
 //   KEY[0]       : reset (aktif rendah)
